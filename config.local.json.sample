@@ -1,0 +1,35 @@
+{
+  "_doc": "Copy to config.local.json and edit. Gitignored — personal to you.",
+  "_doc_agent_map": "Keys are agent types (e.g. feature-dev, Explore). Values override theme/default/config.json agent_map. Only include fields you want to change — unspecified fields inherit from base.",
+  "_doc_available_sprites": "leader, coder_a, coder_b, coder_c, coder_d, coder_e, explorer, planner, robot",
+  "_doc_base_agent_map": {
+    "main":             "sprite=leader,   displayName=Leader,    resident, idle=(20,4)",
+    "general-purpose":  "sprite=coder_c,  displayName=Assistant, resident, idle=(6,15)",
+    "review-neutral":   "sprite=coder_a,  displayName=Neutral,   resident, idle=(14,8)",
+    "feature-dev":      "sprite=coder_b,  displayName=FeatureDev,resident, idle=(24,9)",
+    "review-advocate":  "sprite=coder_e,  displayName=Advocate,  resident, idle=(5,19)",
+    "review-critic":    "sprite=coder_d,  displayName=Critic,    resident, idle=(16,17)",
+    "Explore":          "sprite=explorer, displayName=Explorer,  resident, idle=(35,20)",
+    "Plan":             "sprite=planner,  displayName=Planner,   resident, idle=(21,17)"
+  },
+
+  "character_theme": "default",
+
+  "agent_map": {
+
+    "_example_rename": "Rename only — keep sprite, position, everything else",
+    "main": { "displayName": "Boss" },
+
+    "_example_swap_sprite": "Give a different sprite to an existing agent type",
+    "review-neutral": { "sprite": "coder_b", "displayName": "Reviewer" },
+
+    "_example_new_agent_type": "Map a new agent type (all fields required since key doesn't exist in base)",
+    "frontend": { "sprite": "coder_a", "displayName": "Frontend", "resident": true, "idlePosition": { "x": 14, "y": 8 } },
+
+    "_example_move_seat": "Change idle position only",
+    "Explore": { "idlePosition": { "x": 30, "y": 15 } },
+
+    "_example_non_resident": "Make an agent appear only on hook events, not on page load",
+    "feature-dev": { "resident": false }
+  }
+}

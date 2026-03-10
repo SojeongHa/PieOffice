@@ -64,6 +64,8 @@ for _cfg_name in ("config.json", "config.local.json"):
 CHARACTER_THEME = _validate_theme_name(APP_CONFIG.get("character_theme") or "default")
 if CHARACTER_THEME == "default":
     CHARACTER_THEME = None  # No override needed when theme is default
+# Local agent_map overrides (partial deep merge into theme config)
+_LOCAL_AGENT_MAP = APP_CONFIG.get("agent_map", {})
 
 # Load theme config for state_room_map
 _theme_cfg_path = os.path.join(PROJECT_ROOT, "theme", THEME, "config.json")
@@ -353,6 +355,21 @@ def save_collision():
 
 @app.route("/theme/<path:filename>")
 def theme_file(filename):
+    # For config.json, apply local agent_map overrides (deep merge)
+    if filename == "config.json" and _LOCAL_AGENT_MAP:
+        theme_dir = os.path.join(PROJECT_ROOT, "theme", THEME)
+        cfg_path = os.path.join(theme_dir, "config.json")
+        if os.path.isfile(cfg_path):
+            with open(cfg_path) as f:
+                cfg = json.load(f)
+            base_map = cfg.get("agent_map", {})
+            for key, overrides in _LOCAL_AGENT_MAP.items():
+                if key in base_map:
+                    base_map[key] = {**base_map[key], **overrides}
+                else:
+                    base_map[key] = overrides
+            cfg["agent_map"] = base_map
+            return jsonify(cfg)
     # Try character_theme override first, fall back to default
     if CHARACTER_THEME:
         override_dir = os.path.join(PROJECT_ROOT, "theme", CHARACTER_THEME)
