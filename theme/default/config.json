@@ -1,0 +1,61 @@
+{
+  "name": "default",
+  "tile_size": 32,
+  "scale": 1,
+  "map": "tilemap.json",
+  "tileset": "tileset.png",
+  "rooms": {
+    "manager": { "spawn": { "x": 34, "y": 6 }, "label": "Manager Room" },
+    "work": { "spawn": { "x": 22, "y": 8 }, "label": "Cafeteria" },
+    "break": { "spawn": { "x": 12, "y": 6 }, "label": "Balcony" },
+    "server": { "spawn": { "x": 33, "y": 19 }, "label": "Server Room" }
+  },
+  "agent_map": {
+    "main": { "sprite": "leader", "displayName": "Leader", "resident": true, "idlePosition": { "x": 20, "y": 4 } },
+    "general-purpose": { "sprite": "coder_c", "displayName": "Assistant", "resident": true, "idlePosition": { "x": 6, "y": 15 } },
+    "review-neutral": { "sprite": "coder_a", "displayName": "Neutral", "resident": true, "idlePosition": { "x": 14, "y": 8 } },
+    "feature-dev": { "sprite": "coder_b", "displayName": "FeatureDev", "resident": true, "idlePosition": { "x": 24, "y": 9 } },
+    "review-advocate": { "sprite": "coder_e", "displayName": "Advocate", "resident": true, "idlePosition": { "x": 5, "y": 19 } },
+    "Explore": { "sprite": "explorer", "displayName": "Explorer", "resident": true, "idlePosition": { "x": 35, "y": 20 } },
+    "Plan": { "sprite": "planner", "displayName": "Planner", "resident": true, "idlePosition": { "x": 21, "y": 17 } },
+    "review-critic": { "sprite": "coder_d", "displayName": "Critic", "resident": true, "idlePosition": { "x": 16, "y": 17 } }
+  },
+  "fountain_position": { "x": 14.1, "y": 17 },
+  "objects": [
+    { "sprite": "bookshelf_a", "x": 39.45, "y": 0.8, "depth": 50 },
+    { "sprite": "desk_large_b", "x": 5, "y": 5.2, "depth": 50 },
+    { "sprite": "desk_large_c", "x": 17, "y": 5.2, "depth": 50 },
+    { "sprite": "whiteboard", "x": 4, "y": 1, "depth": 50 },
+    { "sprite": "coffee_table", "x": -0.5, "y": 1.5, "depth": 50 },
+    { "sprite": "desk_manager", "x": 36, "y": 5, "depth": 50 },
+    { "sprite": "bench_c", "x": 18, "y": 14.5, "depth": 50 },
+    { "sprite": "bench_c", "x": 22, "y": 14.5, "depth": 50 },
+    { "sprite": "bench_back", "x": 22, "y": 21, "depth": 50 },
+    { "sprite": "bench_back", "x": 18, "y": 21, "depth": 50 }
+  ],
+  "state_room_map": {
+    "idle": "break",
+    "writing": "work",
+    "executing": "work",
+    "researching": "manager",
+    "reading": "manager",
+    "reporting": "manager",
+    "error": "server",
+    "debugging": "server"
+  },
+  "robot_vacuum": {
+    "sprite": "robot_vacuum",
+    "startTile": { "x": 3, "y": 5 },
+    "turnInterval": 2000,
+    "frames": 4,
+    "frameWidth": 64,
+    "frameHeight": 64,
+    "frameRate": 4
+  },
+  "instance_slots": [
+    {"x": 31, "y": 13.7}, {"x": 39, "y": 13.7}, {"x": 40.5, "y": 13.7},
+    {"x": 42, "y": 13.7}, {"x": 31, "y": 20.6}, {"x": 36, "y": 20.6},
+    {"x": 37.5, "y": 20.6}, {"x": 39, "y": 20.6}, {"x": 40.5, "y": 20.6},
+    {"x": 42, "y": 20.6}, {"x": 32.6, "y": 13.7}, {"x": 34.2, "y": 13.7}
+  ]
+}

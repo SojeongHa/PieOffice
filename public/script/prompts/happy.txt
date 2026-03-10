@@ -1,0 +1,1 @@
+{base_style} Front view. Frame 1: smiling. Frame 2: happy expression. Keep the SAME body structure — do NOT add legs or arms that the character does not have. {description}.

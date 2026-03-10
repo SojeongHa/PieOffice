@@ -1,0 +1,1 @@
+{base_style} Frame 1: still neutral pose. Frame 2: natural next motion for movement. Keep the SAME body structure in both frames — do NOT add legs or arms that the character does not have. {description}. {direction_prompt}

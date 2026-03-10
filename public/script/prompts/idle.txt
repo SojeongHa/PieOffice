@@ -1,0 +1,4 @@
+{base_style}, single character sprite, exactly 1 frame, 256x256 pixels, solid bright green background (#00FF00) behind the character, character standing perfectly still in a natural upright resting pose on two legs, feet together, arms relaxed at sides, NOT walking, completely stationary neutral standing pose, the character MUST be the exact same body and head size as the walk animation frames.
+
+Character: {description}.
+Direction: {direction_prompt}

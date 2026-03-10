@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+    <title>Pie Office</title>
+    <style>
+      /* ── Reset & Base ──────────────────────────────────────────── */
+      *,
+      *::before,
+      *::after {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background: #1a1a2e;
+        color: #c8c8dc;
+        font-family: "Courier New", monospace;
+        overflow: hidden;
+        height: 100vh;
+        width: 100vw;
+      }
+
+      /* ── Game Container ────────────────────────────────────────── */
+      #game-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100vw;
+        height: 100vh;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
+
+      #game-container canvas {
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
+
+      .agent-nametag {
+        position: fixed;
+        font-family: 'Press Start 2P', monospace;
+        font-size: 10px;
+        color: #e8d44d;
+        text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+        transform: translate(-50%, -100%);
+        pointer-events: none;
+        white-space: nowrap;
+        z-index: 50;
+        image-rendering: auto;
+      }
+
+      /* ── Side Panel ────────────────────────────────────────────── */
+      #side-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        width: 320px;
+        height: 100vh;
+        background: #16213e;
+        border-left: 2px solid #3a3a5c;
+        transform: translateX(320px);
+        transition: transform 0.3s ease;
+        z-index: 100;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      #side-panel.open {
+        transform: translateX(0);
+      }
+
+      #panel-toggle {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        width: 40px;
+        height: 40px;
+        background: #16213e;
+        border: 2px solid #3a3a5c;
+        color: #e8d44d;
+        font-size: 18px;
+        cursor: pointer;
+        z-index: 101;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: right 0.3s ease;
+      }
+
+      #panel-toggle:hover {
+        background: #3a3a5c;
+      }
+
+      #panel-toggle.shifted {
+        right: 332px;
+      }
+
+      /* ── Panel Header ──────────────────────────────────────────── */
+      .panel-header {
+        padding: 16px;
+        border-bottom: 2px solid #3a3a5c;
+        text-align: center;
+      }
+
+      .panel-header h2 {
+        color: #e8d44d;
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+      }
+
+      /* ── Agent List ────────────────────────────────────────────── */
+      #agent-section {
+        flex: 0 0 auto;
+        max-height: 50%;
+        overflow-y: auto;
+        border-bottom: 2px solid #3a3a5c;
+      }
+
+      .section-title {
+        padding: 10px 16px 6px;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        color: #7a7a9c;
+      }
+
+      #agent-list {
+        padding: 0 12px 12px;
+      }
+
+      .agent-card {
+        background: #1a1a2e;
+        border: 1px solid #3a3a5c;
+        border-radius: 4px;
+        padding: 10px 12px;
+        margin-bottom: 6px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .agent-card .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .status-dot.active {
+        background: #4caf50;
+        box-shadow: 0 0 4px #4caf50;
+      }
+      .status-dot.idle {
+        background: #7a7a9c;
+      }
+      .status-dot.error {
+        background: #f44336;
+        box-shadow: 0 0 4px #f44336;
+      }
+
+      .agent-card .agent-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .agent-card .agent-name {
+        font-size: 13px;
+        color: #c8c8dc;
+        font-weight: bold;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .agent-card .agent-state {
+        font-size: 10px;
+        color: #7a7a9c;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      /* ── Event Log ─────────────────────────────────────────────── */
+      #log-section {
+        flex: 1;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+      }
+
+      #event-log {
+        padding: 0 12px 12px;
+        flex: 1;
+        overflow-y: auto;
+      }
+
+      .log-entry {
+        font-size: 11px;
+        padding: 4px 0;
+        border-bottom: 1px solid #2a2a4c;
+        line-height: 1.4;
+      }
+
+      .log-entry .log-time {
+        color: #5a5a7c;
+        margin-right: 6px;
+      }
+
+      .log-entry .log-msg {
+        color: #c8c8dc;
+      }
+
+      /* ── Scrollbar ─────────────────────────────────────────────── */
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: #16213e;
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: #3a3a5c;
+        border-radius: 3px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: #5a5a7c;
+      }
+
+      /* ── Instance Alert Popup ───────────────────────────────────── */
+      .instance-popup {
+        position: fixed;
+        background: #16213e;
+        border: 2px solid #e8d44d;
+        border-radius: 6px;
+        padding: 16px;
+        font-family: "Courier New", monospace;
+        font-size: 14px;
+        color: #c8c8dc;
+        z-index: 200;
+        max-width: 320px;
+        pointer-events: auto;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      }
+      .instance-popup .popup-label {
+        color: #f44336;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 6px;
+      }
+      .instance-popup .popup-project {
+        color: #e8d44d;
+        font-size: 15px;
+        font-weight: bold;
+        margin-bottom: 8px;
+      }
+      .instance-popup .popup-message {
+        color: #c8c8dc;
+        font-size: 13px;
+        margin-bottom: 8px;
+        line-height: 1.5;
+        word-break: break-word;
+      }
+      .instance-popup .popup-time {
+        color: #7a7a9c;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Game canvas renders here -->
+    <div id="game-container"></div>
+
+    <!-- Toggle button for side panel -->
+    <button id="panel-toggle" title="Toggle panel">&#9776;</button>
+
+    <!-- Side panel: agent list + event log -->
+    <div id="side-panel">
+      <div class="panel-header">
+        <h2>Pie Office</h2>
+      </div>
+
+      <div id="agent-section">
+        <div class="section-title" id="panel-title">Agents</div>
+        <div id="agent-list">
+          <div class="agent-card" id="no-agents-msg">
+            <span class="agent-state">No agents connected</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="log-section">
+        <div class="section-title" id="log-title">Event Log</div>
+        <div id="event-log"></div>
+      </div>
+    </div>
+
+    <!-- Phaser 3 & EasyStar CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.85.0/dist/phaser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/easystarjs@0.4.4/bin/easystar-0.4.4.min.js"></script>
+
+    <!-- App modules (loaded in dependency order) -->
+    <script src="/static/js/i18n.js"></script>
+    <script src="/static/js/config.js"></script>
+    <script src="/static/js/sse.js"></script>
+    <script src="/static/js/pathfinding.js"></script>
+    <script src="/static/js/agents.js"></script>
+    <script src="/static/js/dialogue.js"></script>
+    <script src="/static/js/ui.js"></script>
+    <script src="/static/js/instance-alerts.js"></script>
+    <script src="/static/js/game.js"></script>
+
+    <!-- Panel toggle logic is handled by UIManager (ui.js) -->
+  </body>
+</html>

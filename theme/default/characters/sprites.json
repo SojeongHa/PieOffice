@@ -1,0 +1,119 @@
+{
+    "frameWidth": 128,
+    "frameHeight": 128,
+    "characters": {
+        "coder_a": {
+            "file": "coder_a.png",
+            "anims": {
+                "idle-down":  { "start": 32, "end": 32, "frameRate": 1 },
+                "walk-down":  { "start": 0,  "end": 1,  "frameRate": 8 },
+                "idle-left":  { "start": 33, "end": 33, "frameRate": 1 },
+                "walk-left":  { "start": 8,  "end": 9,  "frameRate": 8 },
+                "idle-right": { "start": 34, "end": 34, "frameRate": 1 },
+                "walk-right": { "start": 16, "end": 17, "frameRate": 8 },
+                "idle-up":    { "start": 35, "end": 35, "frameRate": 1 },
+                "walk-up":    { "start": 24, "end": 25, "frameRate": 8 },
+                "working":    { "start": 40, "end": 41, "frameRate": 6 },
+                "happy":      { "start": 48, "end": 49, "frameRate": 8 }
+            }
+        },
+        "coder_b": {
+            "file": "coder_b.png",
+            "anims": {
+                "idle-down":  { "start": 32, "end": 32, "frameRate": 1 },
+                "walk-down":  { "start": 0,  "end": 1,  "frameRate": 8 },
+                "idle-left":  { "start": 33, "end": 33, "frameRate": 1 },
+                "walk-left":  { "start": 8,  "end": 9,  "frameRate": 8 },
+                "idle-right": { "start": 34, "end": 34, "frameRate": 1 },
+                "walk-right": { "start": 16, "end": 17, "frameRate": 8 },
+                "idle-up":    { "start": 35, "end": 35, "frameRate": 1 },
+                "walk-up":    { "start": 24, "end": 25, "frameRate": 8 },
+                "working":    { "start": 40, "end": 41, "frameRate": 6 },
+                "happy":      { "start": 48, "end": 49, "frameRate": 8 }
+            }
+        },
+        "coder_c": {
+            "file": "coder_c.png",
+            "anims": {
+                "idle-down":  { "start": 32, "end": 32, "frameRate": 1 },
+                "walk-down":  { "start": 0,  "end": 1,  "frameRate": 8 },
+                "idle-left":  { "start": 33, "end": 33, "frameRate": 1 },
+                "walk-left":  { "start": 8,  "end": 9,  "frameRate": 8 },
+                "idle-right": { "start": 34, "end": 34, "frameRate": 1 },
+                "walk-right": { "start": 16, "end": 17, "frameRate": 8 },
+                "idle-up":    { "start": 35, "end": 35, "frameRate": 1 },
+                "walk-up":    { "start": 24, "end": 25, "frameRate": 8 },
+                "working":    { "start": 40, "end": 41, "frameRate": 6 },
+                "happy":      { "start": 48, "end": 49, "frameRate": 8 }
+            }
+        },
+        "explorer": {
+            "file": "explorer.png",
+            "anims": {
+                "idle-down":  { "start": 32, "end": 32, "frameRate": 1 },
+                "walk-down":  { "start": 0,  "end": 1,  "frameRate": 8 },
+                "idle-left":  { "start": 33, "end": 33, "frameRate": 1 },
+                "walk-left":  { "start": 8,  "end": 9,  "frameRate": 8 },
+                "idle-right": { "start": 34, "end": 34, "frameRate": 1 },
+                "walk-right": { "start": 16, "end": 17, "frameRate": 8 },
+                "idle-up":    { "start": 35, "end": 35, "frameRate": 1 },
+                "walk-up":    { "start": 24, "end": 25, "frameRate": 8 },
+                "working":    { "start": 40, "end": 41, "frameRate": 6 },
+                "happy":      { "start": 48, "end": 49, "frameRate": 8 }
+            }
+        },
+        "planner": {
+            "file": "planner.png",
+            "anims": {
+                "idle-down":  { "start": 32, "end": 32, "frameRate": 1 },
+                "walk-down":  { "start": 0,  "end": 1,  "frameRate": 8 },
+                "idle-left":  { "start": 33, "end": 33, "frameRate": 1 },
+                "walk-left":  { "start": 8,  "end": 9,  "frameRate": 8 },
+                "idle-right": { "start": 34, "end": 34, "frameRate": 1 },
+                "walk-right": { "start": 16, "end": 17, "frameRate": 8 },
+                "idle-up":    { "start": 35, "end": 35, "frameRate": 1 },
+                "walk-up":    { "start": 24, "end": 25, "frameRate": 8 },
+                "working":    { "start": 40, "end": 41, "frameRate": 6 },
+                "happy":      { "start": 48, "end": 49, "frameRate": 8 }
+            }
+        },
+        "leader": {
+            "file": "leader.png",
+            "anims": {
+                "idle-down":  { "start": 32, "end": 32, "frameRate": 1 },
+                "walk-down":  { "start": 0,  "end": 1,  "frameRate": 8 },
+                "idle-left":  { "start": 33, "end": 33, "frameRate": 1 },
+                "walk-left":  { "start": 8,  "end": 9,  "frameRate": 8 },
+                "idle-right": { "start": 34, "end": 34, "frameRate": 1 },
+                "walk-right": { "start": 16, "end": 17, "frameRate": 8 },
+                "idle-up":    { "start": 35, "end": 35, "frameRate": 1 },
+                "walk-up":    { "start": 24, "end": 25, "frameRate": 8 },
+                "working":    { "start": 40, "end": 41, "frameRate": 6 },
+                "happy":      { "start": 48, "end": 49, "frameRate": 8 }
+            }
+        },
+        "coder_e": {
+            "file": "coder_e.png",
+            "anims": {
+                "idle-down":  { "start": 32, "end": 32, "frameRate": 1 },
+                "walk-down":  { "start": 0,  "end": 1,  "frameRate": 8 },
+                "idle-left":  { "start": 33, "end": 33, "frameRate": 1 },
+                "walk-left":  { "start": 8,  "end": 9,  "frameRate": 8 },
+                "idle-right": { "start": 34, "end": 34, "frameRate": 1 },
+                "walk-right": { "start": 16, "end": 17, "frameRate": 8 },
+                "idle-up":    { "start": 35, "end": 35, "frameRate": 1 },
+                "walk-up":    { "start": 24, "end": 25, "frameRate": 8 },
+                "working":    { "start": 40, "end": 41, "frameRate": 6 },
+                "happy":      { "start": 48, "end": 49, "frameRate": 8 }
+            }
+        },
+        "robot": {
+            "file": "robot.png",
+            "anims": "same_as:leader"
+        },
+        "coder_d": {
+            "file": "coder_d.png",
+            "anims": "same_as:leader"
+        }
+    }
+}

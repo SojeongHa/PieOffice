@@ -1,0 +1,83 @@
+{
+  "coder_a": {
+    "animal": "Cat",
+    "description": "Cute orange tabby cat with darker orange stripes, wearing a small blue hoodie, pointy ears, big expressive eyes, pink nose",
+    "prompts": {
+      "down": "facing front",
+      "right": "facing right, side view, tail visible",
+      "up": "facing away, back view, tail visible"
+    }
+  },
+  "coder_b": {
+    "animal": "Dog",
+    "description": "Golden retriever puppy with fluffy golden fur, wearing a red bandana around neck, floppy ears, big happy eyes",
+    "prompts": {
+      "down": "facing front",
+      "right": "facing right, side view, wagging tail visible",
+      "up": "facing away, back view, wagging tail visible"
+    }
+  },
+  "coder_c": {
+    "animal": "Squirrel",
+    "description": "Small chipmunk with brown stripes on back, big fluffy tail, round gold-rimmed glasses, red cardigan, bright curious eyes",
+    "prompts": {
+      "down": "facing front",
+      "right": "facing right, side view, big fluffy tail up",
+      "up": "facing away, back view, big fluffy tail visible"
+    }
+  },
+  "explorer": {
+    "animal": "Fox",
+    "description": "Red fox with white belly, black-tipped ears, tiny brown explorer hat, holding magnifying glass, bushy tail",
+    "prompts": {
+      "down": "facing front",
+      "right": "facing right, side view, bushy tail behind",
+      "up": "facing away, back view, bushy tail with white tip"
+    }
+  },
+  "planner": {
+    "animal": "Bear",
+    "description": "Round brown bear cub with lighter brown belly, bright yellow hard hat, holding clipboard, small round ears",
+    "prompts": {
+      "down": "facing front",
+      "right": "facing right, side view",
+      "up": "facing away, back view"
+    }
+  },
+  "leader": {
+    "animal": "Penguin",
+    "description": "Small penguin with black back and white belly, tiny black bow tie, orange beak, stubby flippers, orange feet",
+    "prompts": {
+      "down": "facing front",
+      "right": "facing right, side view",
+      "up": "facing away, back view"
+    }
+  },
+  "coder_e": {
+    "animal": "Raccoon",
+    "description": "Raccoon with gray and black fur, striped bushy tail, brown leather tool belt with pouches, general-purpose worker",
+    "prompts": {
+      "down": "facing front",
+      "right": "facing right, side view, striped bushy tail visible",
+      "up": "facing away, back view, striped bushy tail visible"
+    }
+  },
+  "coder_d": {
+    "animal": "Duck",
+    "description": "Yellow rubber duck, orange beak, small round body, tiny wings, cute big eyes",
+    "prompts": {
+      "down": "facing front",
+      "right": "facing right, side view, small tail visible",
+      "up": "facing away, back view, small tail visible"
+    }
+  },
+  "robot": {
+    "animal": "Robot",
+    "description": "Chibi wind-up toy robot, round metallic body, dot eyes, antenna on head, ENTIRELY GRAYSCALE only gray tones NO color",
+    "prompts": {
+      "down": "facing front",
+      "right": "facing right, side view, wind-up key on back",
+      "up": "facing away, back view, wind-up key visible"
+    }
+  }
+}

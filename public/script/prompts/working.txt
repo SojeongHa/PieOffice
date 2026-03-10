@@ -1,0 +1,1 @@
+{base_style} Front view. Frame 1: neutral pose. Frame 2: working motion. Keep the SAME body structure — do NOT add legs or arms that the character does not have. No furniture no objects. {description}.
