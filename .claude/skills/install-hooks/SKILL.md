@@ -71,6 +71,13 @@ Restart Claude Code for hooks to take effect.
 
 If any hooks were already present, note them as "already installed (skipped)".
 
+Then suggest:
+
+```
+Run /distribute-character to assign characters to your agents.
+Settings are saved to config.local.json (gitignored, personal to you).
+```
+
 ### Step 6: Uninstall option
 
 If the user says "uninstall" or "remove hooks", reverse the process:

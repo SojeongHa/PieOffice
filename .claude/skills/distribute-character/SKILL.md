@@ -37,14 +37,16 @@ These 4 characters are hardwired to tool routing in `hook/pie-office-hook.py`:
 
 ### Step 1: Read Current Config
 
-Read both config files:
+Read these files using the **Read tool** (not Grep/Glob — `config.local.json` is gitignored and invisible to search tools):
 
 ```
-theme/default/config.json → agent_map (current assignments)
-hook/pie-office-hook.py → AGENT_TYPE_MAP (subagent type routing)
+theme/default/config.json   → agent_map (base defaults)
+config.local.json           → agent_map overrides (may not exist yet)
+config.local.json.sample    → reference for available options
+hook/pie-office-hook.py     → AGENT_TYPE_MAP (subagent type routing)
 ```
 
-Identify any custom agent names the user has already set (non-default values).
+Merge base + local to determine the current effective agent_map. Identify any custom overrides the user has already set.
 
 ### Step 2: Scan Agent/Subagent Usage
 
@@ -132,8 +134,23 @@ Before → After:
 
 Ask the user to confirm. On approval, update TWO files:
 
-1. **`theme/default/config.json`** → `agent_map` entries
+1. **`config.local.json`** → `agent_map` overrides (partial deep merge — only changed fields per agent key). This file is gitignored and personal to each user. The backend merges it on top of `theme/default/config.json` at runtime.
 2. **`hook/pie-office-hook.py`** → `AGENT_TYPE_MAP` dict (add new agent types so SubagentStart can resolve them)
+
+**Important**: Do NOT modify `theme/default/config.json`. All agent_map customizations go into `config.local.json`. The base theme config serves as the shared default.
+
+When writing to `config.local.json`, only include the fields that differ from the theme default. For example, if only `displayName` and the agent key change but `sprite`, `resident`, and `idlePosition` stay the same, only write the changed fields:
+
+```json
+{
+  "character_theme": "pokemon",
+  "agent_map": {
+    "review-critic": { "sprite": "coder_d", "displayName": "Critic", "resident": true, "idlePosition": { "x": 16, "y": 17 } }
+  }
+}
+```
+
+Note: When redistributing a character to a NEW agent key (e.g., `coder_d` → `review-critic`), you must include all fields (`sprite`, `displayName`, `resident`, `idlePosition`) since the key itself is new and has no base to merge from.
 
 Show the exact changes before applying.
 
@@ -142,20 +159,31 @@ Show the exact changes before applying.
 After applying:
 
 ```bash
-python -c "import json; c=json.load(open('theme/default/config.json')); print(json.dumps(c['agent_map'], indent=2))"
+python -c "
+import json, os
+base = json.load(open('theme/default/config.json')).get('agent_map', {})
+local_cfg = {}
+if os.path.exists('config.local.json'):
+    local_cfg = json.load(open('config.local.json')).get('agent_map', {})
+merged = {**base}
+for k, v in local_cfg.items():
+    merged[k] = {**merged.get(k, {}), **v}
+print(json.dumps(merged, indent=2))
+"
 ```
 
 Confirm:
 - All agent IDs are unique
 - No character sprite is assigned twice
 - Every new agent_map key has a corresponding AGENT_TYPE_MAP entry
+- `config.local.json` only contains overrides, not a full copy of the base config
 
 ### Step 7: Commit
 
-Ask the user if they want to commit the changes. If yes, commit both files together:
+Ask the user if they want to commit the hook changes. Only `hook/pie-office-hook.py` needs committing — `config.local.json` is gitignored and personal.
 
 ```
-feat: redistribute characters based on agent usage analysis
+feat: add agent type mappings for redistributed characters
 ```
 
 ## Onboarding: Unmapped Agent Types in config.json
@@ -213,4 +241,4 @@ If a config.json agent type has score 0 AND no similar replacement AND the user 
 - The `robot` sprite is the **fallback** for unmapped agents (random pastel tint). It should NOT be assigned in agent_map.
 - `idlePosition` in agent_map determines where the character sits when idle — keep existing positions unless the user wants to move them.
 - After redistribution, restart the pie-office server (`./dev.sh`) for changes to take effect.
-- `config.local.json` overrides `config.json` — check if the user has local overrides that conflict.
+- `config.local.json` is the single source for personal overrides (gitignored). The backend deep-merges its `agent_map` on top of `theme/default/config.json` at runtime. If `config.local.json` has no `agent_map`, the theme defaults are used as-is.
