@@ -59,8 +59,11 @@ APP_CONFIG = {}
 for _cfg_name in ("config.json", "config.local.json"):
     _cfg_path = os.path.join(PROJECT_ROOT, _cfg_name)
     if os.path.exists(_cfg_path):
-        with open(_cfg_path) as _f:
-            APP_CONFIG.update(json.load(_f))
+        try:
+            with open(_cfg_path) as _f:
+                APP_CONFIG.update(json.load(_f))
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"[Config] Failed to parse {_cfg_name}: {e}", file=sys.stderr)
 CHARACTER_THEME = _validate_theme_name(APP_CONFIG.get("character_theme") or "default")
 if CHARACTER_THEME == "default":
     CHARACTER_THEME = None  # No override needed when theme is default
@@ -360,8 +363,11 @@ def theme_file(filename):
         theme_dir = os.path.join(PROJECT_ROOT, "theme", THEME)
         cfg_path = os.path.join(theme_dir, "config.json")
         if os.path.isfile(cfg_path):
-            with open(cfg_path) as f:
-                cfg = json.load(f)
+            try:
+                with open(cfg_path) as f:
+                    cfg = json.load(f)
+            except (json.JSONDecodeError, ValueError):
+                cfg = {}
             base_map = cfg.get("agent_map", {})
             for key, overrides in _LOCAL_AGENT_MAP.items():
                 if key in base_map:
