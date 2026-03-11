@@ -7,10 +7,7 @@ import threading
 import time
 from typing import Iterator
 
-# Maximum age (seconds) for an SSE connection before forced reconnect.
-MAX_CONNECTION_AGE = 600  # 10 minutes
-# Maximum concurrent SSE listeners allowed.
-MAX_LISTENERS = 20
+from config import MAX_CONNECTION_AGE, MAX_LISTENERS
 
 
 def _format_sse(data: str, event: str | None = None) -> str:

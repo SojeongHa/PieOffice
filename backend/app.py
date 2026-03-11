@@ -34,10 +34,11 @@ from state import (
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
+from config import LEAVE_DELAY
+
 PORT = int(os.environ.get("PORT", 10317))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEBUG = os.environ.get("PIE_OFFICE_DEBUG", "").lower() in ("1", "true")
-LEAVE_DELAY = 5  # seconds — minimum time an agent stays before leaving
 
 
 def _validate_theme_name(name: str) -> str:

@@ -43,7 +43,7 @@ PieOffice/
 - Unmapped agents fall back to `robot` sprite with random pastel tint (Ditto style).
 - Tool events are routed to 4 characters: Explorer (Read/Grep/Glob/Bash/WebSearch/WebFetch), Assistant (Write/Edit/NotebookEdit), Planner (Agent/TaskCreate/TaskUpdate), Leader (Skill/MCP/AskUser).
 - SubagentStart reuses resident agents when `agent_type` matches `AGENT_TYPE_MAP` keys (prevents duplicate characters).
-- SSE uses `threading.Lock` for thread safety and sends keepalive every 15s.
+- SSE uses `_Listener` class (queue + `created_at` timestamp) with `threading.Lock` for thread safety. Max 20 concurrent connections (`MAX_LISTENERS`), oldest-first eviction on overflow. 10-minute connection timeout (`MAX_CONNECTION_AGE=600`), periodic `sweep_stale_listeners()` cleanup, and poison pill (`None`) for graceful generator shutdown. Keepalive every 15s. Active listener count exposed via `/health` endpoint (`sse_listeners`).
 - Server binds to `127.0.0.1` only; CORS restricted to localhost ports.
 - All hook errors logged to stderr (not gated by DEBUG flag).
 - Object sprites live in `theme/default/objects/` and are configured in `config.json` under `objects` array.

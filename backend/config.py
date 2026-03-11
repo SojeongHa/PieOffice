@@ -1,0 +1,46 @@
+"""Centralized configuration constants for Pie Office backend.
+
+All tunable thresholds and limits live here so they can be found
+in one place and optionally overridden via environment variables.
+"""
+
+import os
+
+# ---------------------------------------------------------------------------
+# SSE (sse.py)
+# ---------------------------------------------------------------------------
+# Maximum age (seconds) for an SSE connection before forced reconnect.
+MAX_CONNECTION_AGE: int = int(os.environ.get("PIE_SSE_MAX_AGE", 600))
+
+# Maximum concurrent SSE listeners allowed.
+MAX_LISTENERS: int = int(os.environ.get("PIE_SSE_MAX_LISTENERS", 20))
+
+# ---------------------------------------------------------------------------
+# Agent lifecycle (state.py)
+# ---------------------------------------------------------------------------
+# Seconds without updates before an agent transitions to "lingering".
+STALE_THRESHOLD: int = int(os.environ.get("PIE_STALE_THRESHOLD", 15))
+
+# Seconds in "lingering" before transitioning to "idle" (back to break room).
+LINGER_THRESHOLD: int = int(os.environ.get("PIE_LINGER_THRESHOLD", 30))
+
+# Seconds idle before a non-resident agent is auto-removed.
+IDLE_REMOVE_THRESHOLD: int = int(os.environ.get("PIE_IDLE_REMOVE_THRESHOLD", 60))
+
+# States exempt from the stale sweep (already at rest).
+STALE_EXEMPT_STATES: frozenset[str] = frozenset({"idle", "lingering", "reporting", "permission"})
+
+# Maximum hook log entries kept in the ring buffer.
+HOOK_LOG_MAX: int = int(os.environ.get("PIE_HOOK_LOG_MAX", 50))
+
+# ---------------------------------------------------------------------------
+# Agent leave (app.py)
+# ---------------------------------------------------------------------------
+# Minimum seconds an agent stays before the leave animation fires.
+LEAVE_DELAY: int = int(os.environ.get("PIE_LEAVE_DELAY", 5))
+
+# ---------------------------------------------------------------------------
+# Instance slots (state.py)
+# ---------------------------------------------------------------------------
+# Seconds without events before an instance slot is released.
+INSTANCE_SLOT_TIMEOUT: int = int(os.environ.get("PIE_INSTANCE_SLOT_TIMEOUT", 600))

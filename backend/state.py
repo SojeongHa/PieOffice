@@ -4,11 +4,14 @@ import collections
 import threading
 import time
 
-HOOK_LOG_MAX = 50
-STALE_THRESHOLD = 15  # seconds — agents go "lingering" after this long without updates
-LINGER_THRESHOLD = 30  # seconds — lingering agents go idle (return to break room)
-IDLE_REMOVE_THRESHOLD = 60  # seconds — non-resident agents removed after idle this long
-STALE_EXEMPT_STATES = {"idle", "lingering", "reporting", "permission"}
+from config import (
+    HOOK_LOG_MAX,
+    IDLE_REMOVE_THRESHOLD,
+    INSTANCE_SLOT_TIMEOUT,
+    LINGER_THRESHOLD,
+    STALE_EXEMPT_STATES,
+    STALE_THRESHOLD,
+)
 
 STATE_ROOM_MAP: dict[str, str] = {}
 
@@ -26,7 +29,6 @@ _subagent_map: dict[str, str] = {}  # subagent instance name → resolved agent_
 # Instance tracking: session_id → assigned slot + alert state
 _instances: dict[str, dict] = {}
 _slot_assignments: dict[int, str] = {}  # slot_index → session_id
-INSTANCE_SLOT_TIMEOUT = 600  # 10 min no events → release slot
 
 
 def get_agents() -> dict:
