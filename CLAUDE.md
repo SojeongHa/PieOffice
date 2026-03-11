@@ -20,7 +20,7 @@
 ## Project Structure
 
 ```
-pie-office/
+PieOffice/
   backend/          # Flask (app.py, state.py, sse.py)
   frontend/         # HTML + Phaser 3 + JS modules
     js/             # config, game, agents, sse, ui, i18n, pathfinding, instance-alerts

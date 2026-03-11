@@ -53,7 +53,7 @@ Ask for confirmation before proceeding.
 Run the generation command:
 
 ```bash
-cd /path/to/pie-office && python public/script/generate_characters.py --add "{name}:{concept}"
+cd /path/to/PieOffice && python public/script/generate_characters.py --add "{name}:{concept}"
 ```
 
 This outputs to `theme/default/characters/generated/{name}.png`.
