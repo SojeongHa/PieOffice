@@ -13,8 +13,7 @@
 ## Dev Server
 
 ```bash
-cd backend && python3 app.py          # starts on port 10317 (default)
-PORT=10318 python3 backend/app.py     # alternate port for testing
+cd backend && PORT=10318 python3 app.py   # Claude test port
 ```
 
 ## Project Structure
