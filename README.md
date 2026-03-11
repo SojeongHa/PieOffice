@@ -55,7 +55,8 @@ pip install -r backend/requirements.txt
 ### 2. Start the Server
 
 ```bash
-./dev.sh 10317
+cd backend
+python3 app.py
 ```
 
 Open [http://localhost:10317](http://localhost:10317) in your browser. You should see the pixel-art office with characters in their idle positions.

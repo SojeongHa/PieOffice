@@ -13,8 +13,8 @@
 ## Dev Server
 
 ```bash
-./dev.sh          # starts on port 10318 (default)
-./dev.sh 10317    # production port
+cd backend && python3 app.py          # starts on port 10317 (default)
+PORT=10318 python3 backend/app.py     # alternate port for testing
 ```
 
 ## Project Structure
