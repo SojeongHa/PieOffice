@@ -45,7 +45,7 @@ Pie Office connects to [Claude Code](https://docs.anthropic.com/en/docs/claude-c
 
 ```bash
 git clone https://github.com/SojeongHa/PieOffice.git
-cd pie-office
+cd PieOffice
 
 python3 -m venv venv
 source venv/bin/activate
@@ -64,7 +64,7 @@ Open [http://localhost:10317](http://localhost:10317) in your browser. You shoul
 
 **Option A: Using Claude Code (recommended)**
 
-Open Claude Code in the pie-office directory and type:
+Open Claude Code in the PieOffice directory and type:
 
 ```
 /install-hooks
@@ -86,7 +86,7 @@ After installing, restart Claude Code. Open a session and start working — the 
 
 ## Claude Code Skills
 
-Open Claude Code in the pie-office directory to use these built-in skills:
+Open Claude Code in the PieOffice directory to use these built-in skills:
 
 | Skill | Command | What it does |
 |-------|---------|-------------|
@@ -189,7 +189,7 @@ Append `?lang=ko` to the URL, or let it auto-detect from your browser.
 ## Project Structure
 
 ```
-pie-office/
+PieOffice/
   backend/             # Flask server (app.py, state.py, sse.py)
   frontend/            # Phaser 3 game + UI modules
     js/                # config, game, agents, sse, ui, pathfinding

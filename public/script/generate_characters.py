@@ -170,7 +170,7 @@ def _require_deps():
 def load_api_key():
     """Load Gemini API key from .env or environment."""
     # Try python-dotenv first
-    # Check pie-office root first, then project root
+    # Check PieOffice root first, then project root
     pie_root = PROJECT_ROOT
     env_path = os.path.join(pie_root, ".env")
     if os.path.exists(env_path) and load_dotenv is not None:
