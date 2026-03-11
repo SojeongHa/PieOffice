@@ -98,7 +98,7 @@ def index():
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "theme": THEME, "timestamp": time.time()})
+    return jsonify({"status": "ok", "theme": THEME, "timestamp": time.time(), "sse_listeners": announcer.listener_count})
 
 
 @app.route("/state")
@@ -108,10 +108,10 @@ def state():
 
 @app.route("/stream")
 def stream():
-    q = announcer.listen()
+    listener = announcer.listen()
 
     def event_stream():
-        yield from announcer.stream(q)
+        yield from announcer.stream(listener)
 
     return Response(
         event_stream(),
@@ -407,6 +407,8 @@ def _stale_sweep_loop():
             stale_instances = sweep_stale_instances()
             for sid in stale_instances:
                 announcer.announce({"session_id": sid}, event="instance_slot_release")
+            # Sweep stale SSE connections to prevent file descriptor leaks
+            announcer.sweep_stale_listeners()
         except Exception as e:
             print(f"[Sweep] Error in stale sweep: {e}", file=sys.stderr)
 
