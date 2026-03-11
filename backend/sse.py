@@ -2,8 +2,12 @@
 
 import json
 import queue
+import sys
 import threading
+import time
 from typing import Iterator
+
+from config import MAX_CONNECTION_AGE, MAX_LISTENERS
 
 
 def _format_sse(data: str, event: str | None = None) -> str:
@@ -17,18 +21,46 @@ def _format_sse(data: str, event: str | None = None) -> str:
     return "\n".join(lines)
 
 
+class _Listener:
+    """A single SSE listener with its queue and metadata."""
+
+    __slots__ = ("queue", "created_at")
+
+    def __init__(self):
+        self.queue: queue.Queue = queue.Queue(maxsize=20)
+        self.created_at: float = time.time()
+
+
 class MessageAnnouncer:
     """Fan-out broadcaster: each listener gets its own bounded queue."""
 
     def __init__(self):
-        self._listeners: list[queue.Queue] = []
+        self._listeners: list[_Listener] = []
         self._lock = threading.Lock()
 
-    def listen(self) -> queue.Queue:
-        q: queue.Queue = queue.Queue(maxsize=20)
+    @property
+    def listener_count(self) -> int:
         with self._lock:
-            self._listeners.append(q)
-        return q
+            return len(self._listeners)
+
+    def listen(self) -> _Listener:
+        listener = _Listener()
+        with self._lock:
+            # Evict oldest listeners if at capacity
+            while len(self._listeners) >= MAX_LISTENERS:
+                evicted = self._listeners.pop(0)
+                # Signal the evicted listener to stop
+                try:
+                    evicted.queue.put_nowait(None)
+                except queue.Full:
+                    pass
+                print(
+                    f"[SSE] Evicted oldest listener (created {time.time() - evicted.created_at:.0f}s ago), "
+                    f"now {len(self._listeners)} listeners",
+                    file=sys.stderr,
+                )
+            self._listeners.append(listener)
+        return listener
 
     def announce(self, data: dict, event: str | None = None) -> None:
         """Serialize *data* as JSON and push to every listener.
@@ -36,36 +68,65 @@ class MessageAnnouncer:
         Listeners whose queue is full are silently dropped (client too slow).
         """
         msg = _format_sse(json.dumps(data), event=event)
-        dead: list[queue.Queue] = []
+        dead: list[_Listener] = []
         with self._lock:
-            for q in self._listeners:
+            for listener in self._listeners:
                 try:
-                    q.put_nowait(msg)
+                    listener.queue.put_nowait(msg)
                 except queue.Full:
-                    dead.append(q)
-            for q in dead:
+                    dead.append(listener)
+            for listener in dead:
                 try:
-                    self._listeners.remove(q)
+                    self._listeners.remove(listener)
                 except ValueError:
                     pass
 
-    def stream(self, q: queue.Queue) -> Iterator[str]:
-        """Yield SSE messages from *q* forever (blocking get with keepalive)."""
+    def sweep_stale_listeners(self) -> int:
+        """Remove listeners older than MAX_CONNECTION_AGE. Returns count removed."""
+        now = time.time()
+        stale: list[_Listener] = []
+        with self._lock:
+            for listener in self._listeners:
+                if now - listener.created_at > MAX_CONNECTION_AGE:
+                    stale.append(listener)
+            for listener in stale:
+                try:
+                    self._listeners.remove(listener)
+                except ValueError:
+                    pass
+        # Signal stale listeners to stop their generators
+        for listener in stale:
+            try:
+                listener.queue.put_nowait(None)
+            except queue.Full:
+                pass
+        if stale:
+            print(f"[SSE] Swept {len(stale)} stale listener(s)", file=sys.stderr)
+        return len(stale)
+
+    def stream(self, listener: _Listener) -> Iterator[str]:
+        """Yield SSE messages from listener forever (blocking get with keepalive)."""
         try:
             while True:
                 try:
-                    msg = q.get(timeout=15)
+                    msg = listener.queue.get(timeout=15)
+                    # None is a poison pill — stop this stream
+                    if msg is None:
+                        return
                     yield msg
                 except queue.Empty:
+                    # Check if this connection is too old
+                    if time.time() - listener.created_at > MAX_CONNECTION_AGE:
+                        return
                     yield ": keepalive\n\n"
         except GeneratorExit:
-            self._remove(q)
+            self._remove(listener)
         except Exception:
-            self._remove(q)
+            self._remove(listener)
 
-    def _remove(self, q: queue.Queue) -> None:
+    def _remove(self, listener: _Listener) -> None:
         with self._lock:
             try:
-                self._listeners.remove(q)
+                self._listeners.remove(listener)
             except ValueError:
                 pass

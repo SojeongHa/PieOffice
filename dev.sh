@@ -1,7 +1,7 @@
 #!/bin/bash
 # Pie Office dev server launcher
-# Usage: ./dev.sh [port]  (default: 10318)
-PORT=${1:-10318}
+# Usage: ./dev.sh [port]  (default: 10317)
+PORT=${1:-10317}
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Kill existing process on port
