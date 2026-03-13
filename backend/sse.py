@@ -7,7 +7,7 @@ import threading
 import time
 from typing import Iterator
 
-from config import MAX_CONNECTION_AGE, MAX_LISTENERS
+from config import MAX_CONNECTION_AGE, MAX_LISTENERS, SLEEP_DETECTION_THRESHOLD
 
 
 def _format_sse(data: str, event: str | None = None) -> str:
@@ -37,6 +37,7 @@ class MessageAnnouncer:
     def __init__(self):
         self._listeners: list[_Listener] = []
         self._lock = threading.Lock()
+        self._last_sweep_time: float = time.time()
 
     @property
     def listener_count(self) -> int:
@@ -82,18 +83,33 @@ class MessageAnnouncer:
                     pass
 
     def sweep_stale_listeners(self) -> int:
-        """Remove listeners older than MAX_CONNECTION_AGE. Returns count removed."""
+        """Remove listeners older than MAX_CONNECTION_AGE. Returns count removed.
+
+        Also detects system sleep (time gap > 30s between sweeps) and
+        force-closes ALL listeners to prevent FD leaks from zombie connections.
+        """
         now = time.time()
+        elapsed_since_last = now - self._last_sweep_time
+        self._last_sweep_time = now
+
+        # Detect sleep: if time gap exceeds threshold (normally sweeps every 5s),
+        # the system likely slept — kill all connections, clients will auto-reconnect
+        force_all = elapsed_since_last > SLEEP_DETECTION_THRESHOLD
+
         stale: list[_Listener] = []
         with self._lock:
-            for listener in self._listeners:
-                if now - listener.created_at > MAX_CONNECTION_AGE:
-                    stale.append(listener)
-            for listener in stale:
-                try:
-                    self._listeners.remove(listener)
-                except ValueError:
-                    pass
+            if force_all:
+                stale = list(self._listeners)
+                self._listeners.clear()
+            else:
+                for listener in self._listeners:
+                    if now - listener.created_at > MAX_CONNECTION_AGE:
+                        stale.append(listener)
+                for listener in stale:
+                    try:
+                        self._listeners.remove(listener)
+                    except ValueError:
+                        pass
         # Signal stale listeners to stop their generators
         for listener in stale:
             try:
@@ -101,7 +117,8 @@ class MessageAnnouncer:
             except queue.Full:
                 pass
         if stale:
-            print(f"[SSE] Swept {len(stale)} stale listener(s)", file=sys.stderr)
+            reason = "sleep detected" if force_all else "age limit"
+            print(f"[SSE] Swept {len(stale)} listener(s) ({reason})", file=sys.stderr)
         return len(stale)
 
     def stream(self, listener: _Listener) -> Iterator[str]:
@@ -120,8 +137,11 @@ class MessageAnnouncer:
                         return
                     yield ": keepalive\n\n"
         except GeneratorExit:
-            self._remove(listener)
+            pass
         except Exception:
+            pass
+        finally:
+            # Always remove listener to prevent FD leaks on broken connections
             self._remove(listener)
 
     def _remove(self, listener: _Listener) -> None:

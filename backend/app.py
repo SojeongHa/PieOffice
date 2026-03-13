@@ -421,4 +421,13 @@ threading.Thread(target=_stale_sweep_loop, daemon=True).start()
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     print(f"Pie Office backend starting on :{PORT} (theme={THEME})")
+    import socketserver
+
+    from config import SOCKET_TIMEOUT
+    from werkzeug.serving import WSGIRequestHandler
+
+    # Set socket timeout to detect broken connections faster (e.g., after Mac sleep)
+    socketserver.TCPServer.timeout = SOCKET_TIMEOUT
+    WSGIRequestHandler.timeout = SOCKET_TIMEOUT
+
     app.run(host="127.0.0.1", port=PORT, threaded=True, debug=False)
