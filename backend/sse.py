@@ -122,6 +122,9 @@ class MessageAnnouncer:
         the ``stopped`` event — even when the queue is full and the poison
         pill could not be delivered.  Keepalive is sent every ~15s.
         """
+        # Tell the browser to wait 5s before reconnecting (default is ~3s).
+        # Reduces reconnection storms after Mac sleep / network blips.
+        yield "retry: 5000\n\n"
         last_keepalive = time.time()
         try:
             while not listener.stopped.is_set():

@@ -23,30 +23,74 @@ class SSEClient {
     this._source = null;
     /** @type {Object<string, Function[]>} */
     this._handlers = {};
+    /** @type {number|null} Reconnection timer */
+    this._reconnectTimer = null;
+    /** @type {number} Current backoff delay (ms) */
+    this._backoff = 1000;
+    /** @type {boolean} Whether connect() was called by the user */
+    this._wantConnected = false;
   }
 
   // ── Public API ────────────────────────────────────────────────
 
   /**
    * Open the EventSource connection and wire up all registered events.
+   * Uses manual reconnection with exponential backoff instead of
+   * relying on EventSource's built-in auto-reconnect (which lacks backoff
+   * and can cause FD exhaustion after Mac sleep).
    */
   connect() {
+    this._wantConnected = true;
+    this._backoff = 1000;
+    this._doConnect();
+  }
+
+  /**
+   * Internal: create the EventSource and set up handlers.
+   */
+  _doConnect() {
     if (this._source) {
-      this.close();
+      this._source.close();
+      this._source = null;
     }
 
     this._source = new EventSource(this.url);
 
     this._source.onopen = () => {
       console.log("[SSE] Connected to", this.url);
+      this._backoff = 1000; // reset backoff on successful connection
     };
 
-    this._source.onerror = (err) => {
-      console.warn("[SSE] Connection error — browser will auto-reconnect", err);
-      this._emit("_error", err);
+    this._source.onerror = () => {
+      // Close immediately to release the socket — we handle reconnection manually
+      if (this._source) {
+        this._source.close();
+        this._source = null;
+      }
+      this._scheduleReconnect();
+      this._emit("_error", null);
     };
 
     this._rebindAll();
+  }
+
+  /**
+   * Schedule a reconnection with exponential backoff (1s → 2s → 4s → … → 30s max).
+   */
+  _scheduleReconnect() {
+    if (!this._wantConnected) return;
+    if (this._reconnectTimer) return; // already scheduled
+
+    const delay = this._backoff;
+    this._backoff = Math.min(this._backoff * 2, 30000);
+    console.log(`[SSE] Reconnecting in ${delay}ms`);
+
+    this._reconnectTimer = setTimeout(() => {
+      this._reconnectTimer = null;
+      if (this._wantConnected) {
+        this._doConnect();
+      }
+    }, delay);
   }
 
   /**
@@ -85,9 +129,14 @@ class SSEClient {
   }
 
   /**
-   * Close the underlying EventSource connection.
+   * Close the underlying EventSource connection and stop reconnection.
    */
   close() {
+    this._wantConnected = false;
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
     if (this._source) {
       this._source.close();
       this._source = null;
