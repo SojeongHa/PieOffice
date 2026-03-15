@@ -441,15 +441,6 @@ def _stale_sweep_loop():
                 announcer.announce({"session_id": sid}, event="instance_slot_release")
             # Sweep stale SSE connections to prevent file descriptor leaks
             announcer.sweep_stale_listeners()
-            # Warn when FD usage is high
-            fd_count = _open_fd_count()
-            if fd_count > 200:
-                fd_soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
-                print(
-                    f"[Sweep] FD warning: {fd_count} open (limit={fd_soft}, "
-                    f"sse_listeners={announcer.listener_count})",
-                    file=sys.stderr,
-                )
         except Exception as e:
             print(f"[Sweep] Error in stale sweep: {e}", file=sys.stderr)
 
