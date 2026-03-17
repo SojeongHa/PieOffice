@@ -2,12 +2,26 @@
 
 import json
 import os
+import resource
 import sys
 import threading
 import time
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_cors import CORS
+
+# ---------------------------------------------------------------------------
+# Raise FD soft limit — prevents "Too many open files" after Mac sleep
+# when SSE reconnections create many concurrent werkzeug sockets.
+# ---------------------------------------------------------------------------
+_soft, _hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+_target = min(8192, _hard) if _hard != resource.RLIM_INFINITY else 8192
+if _soft < _target:
+    try:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (_target, _hard))
+        print(f"[Init] Raised FD soft limit: {_soft} → {_target}", file=sys.stderr)
+    except (ValueError, OSError) as e:
+        print(f"[Init] Could not raise FD limit: {e}", file=sys.stderr)
 
 from sse import MessageAnnouncer
 from state import (
@@ -97,9 +111,26 @@ def index():
     return send_from_directory(os.path.join(PROJECT_ROOT, "frontend"), "index.html")
 
 
+def _open_fd_count() -> int:
+    """Count open file descriptors for this process (macOS/Linux)."""
+    try:
+        return len(os.listdir(f"/dev/fd"))
+    except OSError:
+        return -1
+
+
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok", "theme": THEME, "timestamp": time.time(), "sse_listeners": announcer.listener_count})
+    fd_count = _open_fd_count()
+    fd_soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+    return jsonify({
+        "status": "ok",
+        "theme": THEME,
+        "timestamp": time.time(),
+        "sse_listeners": announcer.listener_count,
+        "open_fds": fd_count,
+        "fd_limit": fd_soft,
+    })
 
 
 @app.route("/state")
@@ -421,4 +452,13 @@ threading.Thread(target=_stale_sweep_loop, daemon=True).start()
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     print(f"Pie Office backend starting on :{PORT} (theme={THEME})")
+    import socketserver
+
+    from config import SOCKET_TIMEOUT
+    from werkzeug.serving import WSGIRequestHandler
+
+    # Set socket timeout to detect broken connections faster (e.g., after Mac sleep)
+    socketserver.TCPServer.timeout = SOCKET_TIMEOUT
+    WSGIRequestHandler.timeout = SOCKET_TIMEOUT
+
     app.run(host="127.0.0.1", port=PORT, threaded=True, debug=False)

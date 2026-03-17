@@ -15,6 +15,15 @@ MAX_CONNECTION_AGE: int = int(os.environ.get("PIE_SSE_MAX_AGE", 600))
 # Maximum concurrent SSE listeners allowed.
 MAX_LISTENERS: int = int(os.environ.get("PIE_SSE_MAX_LISTENERS", 20))
 
+# Socket timeout (seconds) for werkzeug to detect broken connections faster
+# (e.g., zombie SSE connections after system sleep).
+SOCKET_TIMEOUT: int = int(os.environ.get("PIE_SOCKET_TIMEOUT", 30))
+
+# Time gap threshold (seconds) between sweeps to detect system sleep.
+# If more than this elapses between sweep cycles (normally 5s), all SSE
+# listeners are force-closed to prevent FD leaks. Clients auto-reconnect.
+SLEEP_DETECTION_THRESHOLD: int = int(os.environ.get("PIE_SLEEP_DETECTION_THRESHOLD", 30))
+
 # ---------------------------------------------------------------------------
 # Agent lifecycle (state.py)
 # ---------------------------------------------------------------------------

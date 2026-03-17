@@ -7,7 +7,7 @@ import threading
 import time
 from typing import Iterator
 
-from config import MAX_CONNECTION_AGE, MAX_LISTENERS
+from config import MAX_CONNECTION_AGE, MAX_LISTENERS, SLEEP_DETECTION_THRESHOLD
 
 
 def _format_sse(data: str, event: str | None = None) -> str:
@@ -24,11 +24,12 @@ def _format_sse(data: str, event: str | None = None) -> str:
 class _Listener:
     """A single SSE listener with its queue and metadata."""
 
-    __slots__ = ("queue", "created_at")
+    __slots__ = ("queue", "created_at", "stopped")
 
     def __init__(self):
         self.queue: queue.Queue = queue.Queue(maxsize=20)
         self.created_at: float = time.time()
+        self.stopped: threading.Event = threading.Event()
 
 
 class MessageAnnouncer:
@@ -37,6 +38,7 @@ class MessageAnnouncer:
     def __init__(self):
         self._listeners: list[_Listener] = []
         self._lock = threading.Lock()
+        self._last_sweep_time: float = time.time()
 
     @property
     def listener_count(self) -> int:
@@ -49,11 +51,7 @@ class MessageAnnouncer:
             # Evict oldest listeners if at capacity
             while len(self._listeners) >= MAX_LISTENERS:
                 evicted = self._listeners.pop(0)
-                # Signal the evicted listener to stop
-                try:
-                    evicted.queue.put_nowait(None)
-                except queue.Full:
-                    pass
+                self._poison(evicted)
                 print(
                     f"[SSE] Evicted oldest listener (created {time.time() - evicted.created_at:.0f}s ago), "
                     f"now {len(self._listeners)} listeners",
@@ -82,34 +80,56 @@ class MessageAnnouncer:
                     pass
 
     def sweep_stale_listeners(self) -> int:
-        """Remove listeners older than MAX_CONNECTION_AGE. Returns count removed."""
+        """Remove listeners older than MAX_CONNECTION_AGE. Returns count removed.
+
+        Also detects system sleep (time gap > 30s between sweeps) and
+        force-closes ALL listeners to prevent FD leaks from zombie connections.
+        """
         now = time.time()
+        elapsed_since_last = now - self._last_sweep_time
+        self._last_sweep_time = now
+
+        # Detect sleep: if time gap exceeds threshold (normally sweeps every 5s),
+        # the system likely slept — kill all connections, clients will auto-reconnect
+        force_all = elapsed_since_last > SLEEP_DETECTION_THRESHOLD
+
         stale: list[_Listener] = []
         with self._lock:
-            for listener in self._listeners:
-                if now - listener.created_at > MAX_CONNECTION_AGE:
-                    stale.append(listener)
-            for listener in stale:
-                try:
-                    self._listeners.remove(listener)
-                except ValueError:
-                    pass
+            if force_all:
+                stale = list(self._listeners)
+                self._listeners.clear()
+            else:
+                for listener in self._listeners:
+                    if now - listener.created_at > MAX_CONNECTION_AGE:
+                        stale.append(listener)
+                for listener in stale:
+                    try:
+                        self._listeners.remove(listener)
+                    except ValueError:
+                        pass
         # Signal stale listeners to stop their generators
         for listener in stale:
-            try:
-                listener.queue.put_nowait(None)
-            except queue.Full:
-                pass
+            self._poison(listener)
         if stale:
-            print(f"[SSE] Swept {len(stale)} stale listener(s)", file=sys.stderr)
+            reason = "sleep detected" if force_all else "age limit"
+            print(f"[SSE] Swept {len(stale)} listener(s) ({reason})", file=sys.stderr)
         return len(stale)
 
     def stream(self, listener: _Listener) -> Iterator[str]:
-        """Yield SSE messages from listener forever (blocking get with keepalive)."""
+        """Yield SSE messages from listener forever (blocking get with keepalive).
+
+        Uses a short poll interval (2s) so the generator reacts quickly to
+        the ``stopped`` event — even when the queue is full and the poison
+        pill could not be delivered.  Keepalive is sent every ~15s.
+        """
+        # Tell the browser to wait 5s before reconnecting (default is ~3s).
+        # Reduces reconnection storms after Mac sleep / network blips.
+        yield "retry: 5000\n\n"
+        last_keepalive = time.time()
         try:
-            while True:
+            while not listener.stopped.is_set():
                 try:
-                    msg = listener.queue.get(timeout=15)
+                    msg = listener.queue.get(timeout=2)
                     # None is a poison pill — stop this stream
                     if msg is None:
                         return
@@ -118,11 +138,29 @@ class MessageAnnouncer:
                     # Check if this connection is too old
                     if time.time() - listener.created_at > MAX_CONNECTION_AGE:
                         return
-                    yield ": keepalive\n\n"
+                    # Send keepalive every ~15s (not every 2s poll)
+                    now = time.time()
+                    if now - last_keepalive >= 15:
+                        last_keepalive = now
+                        yield ": keepalive\n\n"
         except GeneratorExit:
-            self._remove(listener)
+            pass
         except Exception:
+            pass
+        finally:
+            # Always remove listener to prevent FD leaks on broken connections
             self._remove(listener)
+
+    @staticmethod
+    def _poison(listener: _Listener) -> None:
+        """Signal a listener to stop. Sets the stopped event and attempts
+        to deliver a poison pill.  The stopped event guarantees termination
+        even when the queue is full and the pill cannot be enqueued."""
+        listener.stopped.set()
+        try:
+            listener.queue.put_nowait(None)
+        except queue.Full:
+            pass
 
     def _remove(self, listener: _Listener) -> None:
         with self._lock:
