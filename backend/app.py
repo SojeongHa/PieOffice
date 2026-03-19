@@ -13,7 +13,7 @@ from flask_sock import Sock
 
 from terminal import handle_terminal_ws, list_tmux_sessions
 from terminal_auth import generate_token, validate_token
-from config import TERMINAL_LAN_MODE, TERMINAL_TOKEN_PATH, TERMINAL_TLS_CERT, TERMINAL_TLS_KEY
+import config as terminal_config
 
 # ---------------------------------------------------------------------------
 # Raise FD soft limit — prevents "Too many open files" after Mac sleep
@@ -103,7 +103,7 @@ INSTANCE_SLOT_COUNT = len(_theme_config.get("instance_slots", []))
 # App
 # ---------------------------------------------------------------------------
 app = Flask(__name__, static_folder=None)
-if TERMINAL_LAN_MODE:
+if terminal_config.TERMINAL_LAN_MODE:
     CORS(app)
 else:
     CORS(app, origins=[
@@ -445,7 +445,7 @@ def terminal_sessions():
     """List available Claude tmux sessions (requires token in Authorization header)."""
     auth = request.headers.get("Authorization", "")
     token = auth.removeprefix("Bearer ").strip()
-    if not validate_token(token, TERMINAL_TOKEN_PATH):
+    if not validate_token(token, terminal_config.TERMINAL_TOKEN_PATH):
         return jsonify({"error": "unauthorized"}), 401
     sessions = list_tmux_sessions()
     return jsonify({
@@ -505,14 +505,14 @@ if __name__ == "__main__":
     socketserver.TCPServer.timeout = SOCKET_TIMEOUT
     WSGIRequestHandler.timeout = SOCKET_TIMEOUT
 
-    host = "0.0.0.0" if TERMINAL_LAN_MODE else "127.0.0.1"
+    host = "0.0.0.0" if terminal_config.TERMINAL_LAN_MODE else "127.0.0.1"
     ssl_ctx = None
-    if TERMINAL_LAN_MODE:
-        token = generate_token(TERMINAL_TOKEN_PATH)
+    if terminal_config.TERMINAL_LAN_MODE:
+        token = generate_token(terminal_config.TERMINAL_TOKEN_PATH)
         print(f"[Terminal] LAN mode enabled — host={host}", file=sys.stderr)
         print(f"[Terminal] Auth token: {token}", file=sys.stderr)
-        if os.path.isfile(TERMINAL_TLS_CERT) and os.path.isfile(TERMINAL_TLS_KEY):
-            ssl_ctx = (TERMINAL_TLS_CERT, TERMINAL_TLS_KEY)
+        if os.path.isfile(terminal_config.TERMINAL_TLS_CERT) and os.path.isfile(terminal_config.TERMINAL_TLS_KEY):
+            ssl_ctx = (terminal_config.TERMINAL_TLS_CERT, terminal_config.TERMINAL_TLS_KEY)
             print("[Terminal] TLS enabled", file=sys.stderr)
         else:
             print("[Terminal] WARNING: No TLS cert found. Run setup-terminal.sh first.",
