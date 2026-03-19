@@ -53,3 +53,29 @@ LEAVE_DELAY: int = int(os.environ.get("PIE_LEAVE_DELAY", 5))
 # ---------------------------------------------------------------------------
 # Seconds without events before an instance slot is released.
 INSTANCE_SLOT_TIMEOUT: int = int(os.environ.get("PIE_INSTANCE_SLOT_TIMEOUT", 600))
+
+# ---------------------------------------------------------------------------
+# Terminal (terminal.py)
+# ---------------------------------------------------------------------------
+# Path to the bearer token file for terminal authentication.
+TERMINAL_TOKEN_PATH: str = os.environ.get(
+    "PIE_TERMINAL_TOKEN_PATH",
+    os.path.expanduser("~/.pieoffice-terminal-token"),
+)
+
+# Enable LAN binding (0.0.0.0) instead of localhost-only.
+# When True, the server listens on all interfaces (required for phone access).
+TERMINAL_LAN_MODE: bool = os.environ.get("PIE_TERMINAL_LAN", "").lower() in ("1", "true")
+
+# TLS certificate and key paths for HTTPS (required in LAN mode).
+TERMINAL_TLS_CERT: str = os.environ.get(
+    "PIE_TERMINAL_TLS_CERT",
+    os.path.expanduser("~/.pieoffice-tls/cert.pem"),
+)
+TERMINAL_TLS_KEY: str = os.environ.get(
+    "PIE_TERMINAL_TLS_KEY",
+    os.path.expanduser("~/.pieoffice-tls/key.pem"),
+)
+
+# Seconds of inactivity before caffeinate is released (Mac can sleep again).
+TERMINAL_IDLE_TIMEOUT: int = int(os.environ.get("PIE_TERMINAL_IDLE_TIMEOUT", 300))
