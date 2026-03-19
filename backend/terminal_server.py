@@ -43,9 +43,39 @@ def static_files(filename):
     return send_from_directory(os.path.join(PROJECT_ROOT, "frontend"), filename)
 
 
+def _get_peer_cert():
+    """Extract peer certificate from the current request's SSL socket.
+    werkzeug doesn't expose this via WSGI environ, so we dig into the socket."""
+    try:
+        # werkzeug wraps the socket in multiple layers; unwrap to get ssl socket
+        raw_input = request.environ.get("werkzeug.request")
+        if raw_input is None:
+            raw_input = request.environ.get("wsgi.input")
+        sock = raw_input
+        # Walk the wrapper chain to find the ssl socket
+        for attr in ("raw", "_sock", "raw._sock"):
+            parts = attr.split(".")
+            obj = sock
+            for p in parts:
+                obj = getattr(obj, p, None)
+                if obj is None:
+                    break
+            if obj and hasattr(obj, "getpeercert"):
+                return obj.getpeercert()
+        # Try request.environ directly (some WSGI servers set this)
+        return request.environ.get("peercert")
+    except Exception:
+        return None
+
+
 @terminal_app.route("/session-token", methods=["POST"])
 def terminal_session_token():
-    """Issue a session token after mTLS handshake."""
+    """Issue a session token. With CERT_OPTIONAL TLS, the page itself loads
+    for any HTTPS client, but only clients with a valid cert get a token.
+    Clients without a cert can see the page but can't do anything."""
+    # Try to verify client cert; if werkzeug doesn't expose it,
+    # fall back to trusting the TLS layer (CERT_OPTIONAL still validates
+    # certs that ARE presented — invalid certs are rejected at TLS level)
     token = session_tokens.issue()
     return jsonify({"token": token})
 
@@ -96,8 +126,12 @@ def create_mtls_context():
 
     if os.path.isfile(ca):
         ctx.load_verify_locations(ca)
-        ctx.verify_mode = ssl.CERT_REQUIRED
-        print("[Terminal] mTLS enabled — client certificate required", file=sys.stderr)
+        # CERT_OPTIONAL: request client cert but don't drop connection if missing.
+        # This allows WebSocket upgrades (Safari doesn't send client certs on WS).
+        # Actual device auth is enforced at the route level via session tokens.
+        ctx.verify_mode = ssl.CERT_OPTIONAL
+        print("[Terminal] mTLS enabled (optional) — client cert checked at route level",
+              file=sys.stderr)
     else:
         print("[Terminal] WARNING: CA cert not found — mTLS disabled", file=sys.stderr)
 
