@@ -12,7 +12,7 @@ from flask_cors import CORS
 from flask_sock import Sock
 
 from terminal import handle_terminal_ws, list_tmux_sessions
-from terminal_auth import generate_token, validate_token
+from terminal_auth import SessionTokenStore
 import config as terminal_config
 
 # ---------------------------------------------------------------------------
@@ -111,6 +111,7 @@ else:
         "http://127.0.0.1:10317", "http://127.0.0.1:10318",
     ])
 sock = Sock(app)
+session_tokens = SessionTokenStore(ttl=terminal_config.TERMINAL_SESSION_TOKEN_TTL)
 announcer = MessageAnnouncer()
 
 # ---------------------------------------------------------------------------
@@ -437,15 +438,25 @@ def theme_file(filename):
 
 @app.route("/terminal")
 def terminal_page():
+    """Serve terminal page. In LAN mode, mTLS ensures only registered devices reach here."""
     return send_from_directory(os.path.join(PROJECT_ROOT, "frontend"), "terminal.html")
+
+
+@app.route("/terminal/session-token", methods=["POST"])
+def terminal_session_token():
+    """Issue a session token after mTLS handshake.
+    mTLS already authenticated the device at TLS layer, so this just issues
+    a token for WebSocket auth (browsers don't pass client certs on WS)."""
+    token = session_tokens.issue()
+    return jsonify({"token": token})
 
 
 @app.route("/terminal/sessions")
 def terminal_sessions():
-    """List available Claude tmux sessions (requires token in Authorization header)."""
+    """List available Claude tmux sessions (requires session token)."""
     auth = request.headers.get("Authorization", "")
     token = auth.removeprefix("Bearer ").strip()
-    if not validate_token(token, terminal_config.TERMINAL_TOKEN_PATH):
+    if not session_tokens.validate(token):
         return jsonify({"error": "unauthorized"}), 401
     sessions = list_tmux_sessions()
     return jsonify({
@@ -459,7 +470,7 @@ def terminal_sessions():
 @sock.route("/terminal/ws/<session_name>")
 def terminal_ws(ws, session_name):
     """WebSocket endpoint for terminal I/O relay to a tmux session."""
-    handle_terminal_ws(ws, session_name)
+    handle_terminal_ws(ws, session_name, session_tokens)
 
 
 # ---------------------------------------------------------------------------
@@ -508,12 +519,22 @@ if __name__ == "__main__":
     host = "0.0.0.0" if terminal_config.TERMINAL_LAN_MODE else "127.0.0.1"
     ssl_ctx = None
     if terminal_config.TERMINAL_LAN_MODE:
-        token = generate_token(terminal_config.TERMINAL_TOKEN_PATH)
         print(f"[Terminal] LAN mode enabled — host={host}", file=sys.stderr)
-        print(f"[Terminal] Auth token: {token}", file=sys.stderr)
-        if os.path.isfile(terminal_config.TERMINAL_TLS_CERT) and os.path.isfile(terminal_config.TERMINAL_TLS_KEY):
-            ssl_ctx = (terminal_config.TERMINAL_TLS_CERT, terminal_config.TERMINAL_TLS_KEY)
-            print("[Terminal] TLS enabled", file=sys.stderr)
+        cert = terminal_config.TERMINAL_TLS_CERT
+        key = terminal_config.TERMINAL_TLS_KEY
+        ca = terminal_config.TERMINAL_TLS_CA
+        if os.path.isfile(cert) and os.path.isfile(key):
+            import ssl
+            ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ssl_ctx.load_cert_chain(cert, key)
+            if os.path.isfile(ca):
+                ssl_ctx.load_verify_locations(ca)
+                ssl_ctx.verify_mode = ssl.CERT_REQUIRED
+                print("[Terminal] mTLS enabled — client certificate required",
+                      file=sys.stderr)
+            else:
+                print("[Terminal] TLS enabled (no mTLS — CA cert not found)",
+                      file=sys.stderr)
         else:
             print("[Terminal] WARNING: No TLS cert found. Run setup-terminal.sh first.",
                   file=sys.stderr)

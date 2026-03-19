@@ -252,11 +252,10 @@
   </style>
 </head>
 <body>
-  <!-- Auth Screen -->
+  <!-- Auth Screen (shown while acquiring session token via mTLS) -->
   <div id="auth-screen">
     <h1>Pie Office Terminal</h1>
-    <input type="password" id="token-input" placeholder="Enter access token" autocomplete="off" />
-    <button onclick="authenticate()">Connect</button>
+    <div style="color: var(--text-muted); font-size: 14px;">Authenticating device...</div>
     <div id="auth-error"></div>
   </div>
 

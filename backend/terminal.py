@@ -13,8 +13,7 @@ import threading
 import time
 from dataclasses import dataclass
 
-from config import TERMINAL_IDLE_TIMEOUT, TERMINAL_TOKEN_PATH
-from terminal_auth import validate_token
+from config import TERMINAL_IDLE_TIMEOUT
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +140,7 @@ caffeinate = CaffeinateManager()
 # ---------------------------------------------------------------------------
 
 
-def handle_terminal_ws(ws, session_name: str) -> None:
+def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     """WebSocket handler: attach to a tmux session and relay I/O.
 
     Protocol:
@@ -152,15 +151,14 @@ def handle_terminal_ws(ws, session_name: str) -> None:
     - Server sends JSON: {"type": "error", "message": "..."} on errors
     """
 
-    # --- Auth handshake ---
+    # --- Auth handshake (session token issued after mTLS) ---
     try:
         raw = ws.receive(timeout=10)
         if raw is None:
             return
         msg = json.loads(raw)
-        if msg.get("type") != "auth" or not validate_token(
-            msg.get("token", ""), TERMINAL_TOKEN_PATH
-        ):
+        token = msg.get("token", "")
+        if msg.get("type") != "auth" or not session_tokens or not session_tokens.validate(token):
             ws.send(json.dumps({"type": "error", "message": "unauthorized"}))
             return
     except Exception:

@@ -1,53 +1,71 @@
-"""Token-based authentication for the web terminal.
+"""Session-token authentication for the web terminal.
 
-Generates a random bearer token on first run, stores it in a file
-with 0600 permissions.  The token is shown once during setup so the
-user can save it on their phone.
+mTLS handles device authentication at the TLS layer. Once a client passes
+mTLS, the server issues a short-lived session token that the client uses
+for WebSocket authentication (since browsers don't reliably pass client
+certificates on WebSocket upgrades).
+
+Flow:
+  1. Client loads /terminal (mTLS required — only registered devices pass)
+  2. Page calls GET /terminal/session-token → server issues a random token
+  3. Token is stored in-memory with TTL (not persisted to disk)
+  4. Client sends token in WebSocket auth handshake
+  5. Server validates token and attaches to tmux session
 """
 
 import hmac
-import os
 import secrets
 import sys
+import threading
+import time
 
 
-def generate_token(token_path: str) -> str:
-    """Generate a new token and write to *token_path*, or return existing."""
-    if os.path.isfile(token_path):
-        with open(token_path) as f:
-            return f.read().strip()
+class SessionTokenStore:
+    """In-memory store for short-lived session tokens with automatic expiry."""
 
-    token = secrets.token_hex(32)  # 64-char hex string
+    def __init__(self, ttl: int = 3600):
+        self._tokens: dict[str, float] = {}  # token → expiry timestamp
+        self._lock = threading.Lock()
+        self._ttl = ttl
 
-    # Ensure parent directory exists
-    parent = os.path.dirname(token_path)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
+    def issue(self) -> str:
+        """Issue a new session token."""
+        token = secrets.token_hex(32)
+        with self._lock:
+            self._tokens[token] = time.time() + self._ttl
+            self._sweep()
+        return token
 
-    # Write with restricted permissions (owner-only read/write)
-    fd = os.open(token_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    try:
-        os.write(fd, token.encode())
-    finally:
-        os.close(fd)
-
-    print(f"[Terminal] Auth token generated: {token_path}", file=sys.stderr)
-    return token
-
-
-def load_token(token_path: str) -> str | None:
-    """Load an existing token from file, or return None if missing."""
-    if not os.path.isfile(token_path):
-        return None
-    with open(token_path) as f:
-        return f.read().strip()
-
-
-def validate_token(candidate: str, token_path: str) -> bool:
-    """Constant-time comparison of *candidate* against the stored token."""
-    if not candidate:
+    def validate(self, candidate: str) -> bool:
+        """Validate a session token (constant-time comparison, checks expiry)."""
+        if not candidate:
+            return False
+        with self._lock:
+            self._sweep()
+            for stored_token, expiry in self._tokens.items():
+                if hmac.compare_digest(candidate, stored_token):
+                    return time.time() < expiry
         return False
-    stored = load_token(token_path)
-    if stored is None:
-        return False
-    return hmac.compare_digest(candidate, stored)
+
+    def revoke(self, token: str) -> None:
+        """Revoke a specific token."""
+        with self._lock:
+            self._tokens.pop(token, None)
+
+    def revoke_all(self) -> None:
+        """Revoke all tokens (e.g., on server restart or security event)."""
+        with self._lock:
+            self._tokens.clear()
+
+    def _sweep(self) -> None:
+        """Remove expired tokens. Must be called with lock held."""
+        now = time.time()
+        expired = [t for t, exp in self._tokens.items() if now >= exp]
+        for t in expired:
+            del self._tokens[t]
+
+    @property
+    def active_count(self) -> int:
+        with self._lock:
+            self._sweep()
+            return len(self._tokens)

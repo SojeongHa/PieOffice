@@ -1,54 +1,66 @@
-"""Tests for terminal token authentication."""
+"""Tests for session token authentication."""
 
-import os
+import time
 
 import pytest
 
-from terminal_auth import generate_token, load_token, validate_token
+from terminal_auth import SessionTokenStore
 
 
-class TestTokenGeneration:
-    def test_generate_token_creates_file(self, tmp_path):
-        token_path = str(tmp_path / "token")
-        token = generate_token(token_path)
-        assert os.path.isfile(token_path)
-        assert len(token) == 64  # 32 bytes hex
+class TestSessionTokenStore:
+    def test_issue_returns_64_char_hex(self):
+        store = SessionTokenStore(ttl=60)
+        token = store.issue()
+        assert len(token) == 64
+        assert all(c in "0123456789abcdef" for c in token)
 
-    def test_generate_token_file_permissions(self, tmp_path):
-        token_path = str(tmp_path / "token")
-        generate_token(token_path)
-        mode = oct(os.stat(token_path).st_mode & 0o777)
-        assert mode == "0o600"
+    def test_validate_issued_token(self):
+        store = SessionTokenStore(ttl=60)
+        token = store.issue()
+        assert store.validate(token) is True
 
-    def test_generate_token_does_not_overwrite(self, tmp_path):
-        token_path = str(tmp_path / "token")
-        token1 = generate_token(token_path)
-        token2 = generate_token(token_path)
-        assert token1 == token2
+    def test_validate_wrong_token(self):
+        store = SessionTokenStore(ttl=60)
+        store.issue()
+        assert store.validate("wrong-token") is False
 
+    def test_validate_empty_token(self):
+        store = SessionTokenStore(ttl=60)
+        assert store.validate("") is False
 
-class TestTokenValidation:
-    def test_load_token_reads_file(self, tmp_path):
-        token_path = str(tmp_path / "token")
-        generated = generate_token(token_path)
-        loaded = load_token(token_path)
-        assert loaded == generated
+    def test_expired_token_rejected(self):
+        store = SessionTokenStore(ttl=0)  # expires immediately
+        token = store.issue()
+        time.sleep(0.01)
+        assert store.validate(token) is False
 
-    def test_load_token_missing_file(self, tmp_path):
-        loaded = load_token(str(tmp_path / "nonexistent"))
-        assert loaded is None
+    def test_revoke_token(self):
+        store = SessionTokenStore(ttl=60)
+        token = store.issue()
+        store.revoke(token)
+        assert store.validate(token) is False
 
-    def test_validate_token_correct(self, tmp_path):
-        token_path = str(tmp_path / "token")
-        token = generate_token(token_path)
-        assert validate_token(token, token_path) is True
+    def test_revoke_all(self):
+        store = SessionTokenStore(ttl=60)
+        t1 = store.issue()
+        t2 = store.issue()
+        store.revoke_all()
+        assert store.validate(t1) is False
+        assert store.validate(t2) is False
 
-    def test_validate_token_wrong(self, tmp_path):
-        token_path = str(tmp_path / "token")
-        generate_token(token_path)
-        assert validate_token("wrong-token", token_path) is False
+    def test_active_count(self):
+        store = SessionTokenStore(ttl=60)
+        assert store.active_count == 0
+        store.issue()
+        store.issue()
+        assert store.active_count == 2
 
-    def test_validate_token_empty(self, tmp_path):
-        token_path = str(tmp_path / "token")
-        generate_token(token_path)
-        assert validate_token("", token_path) is False
+    def test_multiple_tokens_independent(self):
+        store = SessionTokenStore(ttl=60)
+        t1 = store.issue()
+        t2 = store.issue()
+        assert store.validate(t1) is True
+        assert store.validate(t2) is True
+        store.revoke(t1)
+        assert store.validate(t1) is False
+        assert store.validate(t2) is True

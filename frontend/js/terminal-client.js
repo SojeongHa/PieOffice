@@ -1,33 +1,46 @@
 // frontend/js/terminal-client.js
-// Slack-style terminal client with auto-sync session list
+// Slack-style terminal client with mTLS + auto session token
 
 (function () {
   "use strict";
 
-  const SYNC_INTERVAL = 5000; // Auto-sync session list every 5s
+  var SYNC_INTERVAL = 5000;
 
-  let token = localStorage.getItem("pie-terminal-token") || "";
-  let ws = null;
-  let term = null;
-  let fitAddon = null;
-  let currentSession = null;
-  let reconnectTimeout = null;
-  let syncTimer = null;
-  let lastSessionsJson = "";
+  var token = "";
+  var ws = null;
+  var term = null;
+  var fitAddon = null;
+  var currentSession = null;
+  var reconnectTimeout = null;
+  var syncTimer = null;
+  var lastSessionsJson = "";
 
-  // ── Auth ──────────────────────────────────────────────
+  // ── Auto-init: acquire session token (mTLS handles device auth) ───
 
-  window.authenticate = function () {
-    var input = document.getElementById("token-input");
-    token = input.value.trim();
-    if (!token) return;
-    localStorage.setItem("pie-terminal-token", token);
-    fetchSessionsAndShow();
-  };
+  acquireSessionToken();
 
-  // Auto-auth if token saved
-  if (token) {
-    fetchSessionsAndShow();
+  function acquireSessionToken() {
+    fetch(location.origin + "/terminal/session-token", { method: "POST" })
+      .then(function (r) {
+        if (!r.ok) {
+          showError("Device not authorized. Install client certificate.");
+          return null;
+        }
+        return r.json();
+      })
+      .then(function (data) {
+        if (!data) return;
+        token = data.token;
+        fetchSessionsAndShow();
+      })
+      .catch(function () {
+        showError("Connection failed. Is the server running?");
+      });
+  }
+
+  function showError(msg) {
+    var el = document.getElementById("auth-error");
+    if (el) el.textContent = msg;
   }
 
   // ── Session List (auto-sync) ──────────────────────────
@@ -37,8 +50,8 @@
       headers: { Authorization: "Bearer " + token },
     }).then(function (r) {
       if (r.status === 401) {
-        localStorage.removeItem("pie-terminal-token");
-        location.reload();
+        // Token expired — re-acquire
+        acquireSessionToken();
         return null;
       }
       return r.json();
@@ -57,7 +70,7 @@
         startAutoSync();
       })
       .catch(function () {
-        document.getElementById("auth-error").textContent = "Connection failed";
+        showError("Connection failed");
       })
       .finally(function () {
         if (dot) dot.classList.remove("syncing");
@@ -73,7 +86,6 @@
       fetchSessions()
         .then(function (data) {
           if (!data) return;
-          // Only re-render if sessions changed (avoid flicker)
           var json = JSON.stringify(data.sessions);
           if (json !== lastSessionsJson) {
             renderSessionList(data.sessions);
@@ -145,24 +157,20 @@
     }
     currentSession = sessionName;
 
-    // Re-render to update active state
     if (lastSessionsJson) {
       renderSessionList(JSON.parse(lastSessionsJson));
     }
 
-    // Show terminal header
     var header = document.getElementById("terminal-header");
     header.style.display = "flex";
     document.getElementById("session-title").textContent = sessionName;
     setStatus("connecting", "Connecting...");
 
-    // Hide empty state, show terminal
     document.getElementById("empty-state").style.display = "none";
     var termContainer = document.getElementById("terminal-container");
     termContainer.style.display = "block";
     termContainer.innerHTML = "";
 
-    // Init xterm.js
     term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
@@ -183,10 +191,8 @@
     term.loadAddon(new WebLinksAddon.WebLinksAddon());
     term.open(termContainer);
 
-    // Delay fit to ensure container has dimensions
     requestAnimationFrame(function () { fitAddon.fit(); });
 
-    // WebSocket
     var wsProto = location.protocol === "https:" ? "wss" : "ws";
     ws = new WebSocket(wsProto + "://" + location.host + "/terminal/ws/" + sessionName);
 
@@ -204,6 +210,10 @@
       } else if (msg.type === "error") {
         setStatus("disconnected", msg.message);
         term.write("\r\n\x1b[31m" + msg.message + "\x1b[0m\r\n");
+        if (msg.message === "unauthorized") {
+          // Session token expired — re-acquire and retry
+          acquireSessionToken();
+        }
       }
     };
 
@@ -216,14 +226,12 @@
       setStatus("disconnected", "Error");
     };
 
-    // Input relay
     term.onData(function (data) {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "input", data: data }));
       }
     });
 
-    // Resize handling
     window.removeEventListener("resize", handleResize);
     window.addEventListener("resize", handleResize);
 
