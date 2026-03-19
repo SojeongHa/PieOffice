@@ -1,11 +1,13 @@
 #!/bin/bash
 # Pie Office dev server launcher
-# Usage: ./dev.sh [port] [--lan]
-PORT=${1:-10317}
+# Usage: ./dev.sh [port] [--lan]    ./dev.sh --lan [port]
+PORT=10317
 LAN_MODE=""
 for arg in "$@"; do
     if [ "$arg" = "--lan" ]; then
         LAN_MODE=1
+    elif [[ "$arg" =~ ^[0-9]+$ ]]; then
+        PORT="$arg"
     fi
 done
 DIR="$(cd "$(dirname "$0")" && pwd)"
