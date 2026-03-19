@@ -181,7 +181,10 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
 
     if child_pid == 0:
         # Child process — exec tmux attach
-        os.execlp("tmux", "tmux", "attach-session", "-t", session_name)
+        # Use new-session -t to create a shared client to the same session.
+        # This allows multiple viewers (laptop + phone) simultaneously,
+        # unlike attach-session which can conflict with existing clients.
+        os.execlp("tmux", "tmux", "new-session", "-t", session_name, "-s", f"web-{os.getpid()}")
         # If exec fails, exit
         os._exit(1)
 
