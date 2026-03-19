@@ -1,0 +1,20 @@
+#!/bin/bash
+# claude-tmux — tmux wrapper for claude code
+# Ensures each claude session runs inside tmux for web terminal sharing.
+
+# Generate a short session name from the working directory
+DIR_HASH=$(echo -n "$(pwd)" | md5 -q | head -c 8)
+SESSION_NAME="claude-${DIR_HASH}"
+
+# If already inside tmux, just run claude directly
+if [ -n "$TMUX" ]; then
+    exec command claude "$@"
+fi
+
+# If session already exists, attach to it
+if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    exec tmux attach-session -t "$SESSION_NAME"
+fi
+
+# Create new tmux session running claude
+exec tmux new-session -s "$SESSION_NAME" -- command claude "$@"
