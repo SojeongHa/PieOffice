@@ -1,10 +1,9 @@
-"""Web terminal: tmux session listing, pipe-based I/O relay via WebSocket, caffeinate."""
+"""Web terminal: tmux session listing, WebSocket I/O relay, caffeinate."""
 
 import json
 import os
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -132,18 +131,16 @@ caffeinate = CaffeinateManager()
 
 
 # ---------------------------------------------------------------------------
-# WebSocket handler — tmux pipe-pane + send-keys (no pty, thread-safe)
+# WebSocket handler — uses `script` to wrap tmux in a pty safely
 # ---------------------------------------------------------------------------
 
 
 def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
-    """WebSocket handler: relay I/O to a tmux session using pipe-pane + send-keys.
+    """WebSocket handler: attach to a tmux session and relay I/O.
 
-    This avoids pty entirely (which crashes in Flask's threaded server).
-    Instead:
-    - Output: `tmux pipe-pane` pipes pane output to a FIFO we read
-    - Input: `tmux send-keys` injects keystrokes
-    - Resize: `tmux resize-window`
+    Uses macOS `script -q /dev/null` to allocate a pty outside Python,
+    avoiding segfaults from pty.fork()/openpty() in Flask's threaded server.
+    We just read/write to subprocess PIPE — completely thread-safe.
 
     Protocol:
     - Client sends JSON: {"type": "auth", "token": "..."} first
@@ -176,48 +173,44 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     ws.send(json.dumps({"type": "connected", "session": session_name}))
     caffeinate.acquire()
 
-    # Use tmux capture-pane polling approach (simple, no pty, no FIFO)
-    print(f"[Terminal] Connected to tmux session '{session_name}'", file=sys.stderr)
+    # `script -q /dev/null` allocates a pty for us — Python just uses pipes.
+    # This avoids pty.openpty()/pty.fork() which segfault in threaded Flask.
+    web_session = f"web-{threading.current_thread().ident}"
+    proc = subprocess.Popen(
+        ["script", "-q", "/dev/null",
+         "tmux", "new-session", "-t", session_name, "-s", web_session],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+
+    print(f"[Terminal] Connected to '{session_name}' (pid={proc.pid})", file=sys.stderr)
 
     stop = threading.Event()
-    last_content = ""
 
-    def _poll_pane():
-        """Poll tmux pane content and send diffs to WebSocket."""
-        nonlocal last_content
+    def _read_output():
+        """Read subprocess stdout and send to WebSocket."""
         try:
-            while not stop.is_set():
-                time.sleep(0.1)  # 100ms polling
-                try:
-                    result = subprocess.run(
-                        ["tmux", "capture-pane", "-t", session_name, "-p", "-e"],
-                        capture_output=True, text=True, timeout=2,
-                    )
-                    if result.returncode != 0:
-                        break
-                    content = result.stdout
-                    if content != last_content:
-                        # Send full screen refresh (clear + new content)
-                        ws.send(json.dumps({
-                            "type": "output",
-                            "data": "\x1b[2J\x1b[H" + content,
-                        }))
-                        last_content = content
-                except subprocess.TimeoutExpired:
-                    continue
-                except Exception:
+            while not stop.is_set() and proc.poll() is None:
+                data = proc.stdout.read(4096)
+                if not data:
                     break
+                ws.send(json.dumps({
+                    "type": "output",
+                    "data": data.decode("utf-8", errors="replace"),
+                }))
         except Exception as e:
-            print(f"[Terminal] pane poller error: {e}", file=sys.stderr)
+            if not stop.is_set():
+                print(f"[Terminal] reader error: {e}", file=sys.stderr)
         finally:
             stop.set()
 
-    poller = threading.Thread(target=_poll_pane, daemon=True)
-    poller.start()
+    reader = threading.Thread(target=_read_output, daemon=True)
+    reader.start()
 
     try:
         while not stop.is_set():
-            raw = ws.receive(timeout=2)
+            raw = ws.receive(timeout=5)
             if raw is None:
                 print("[Terminal] WebSocket closed by client", file=sys.stderr)
                 break
@@ -233,18 +226,19 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
 
             elif msg_type == "input":
                 data = msg.get("data", "")
-                if data:
-                    # send-keys -l sends literal characters
-                    subprocess.run(
-                        ["tmux", "send-keys", "-t", session_name, "-l", data],
-                        capture_output=True, timeout=2,
-                    )
+                if data and proc.stdin:
+                    try:
+                        proc.stdin.write(data.encode("utf-8"))
+                        proc.stdin.flush()
+                    except (BrokenPipeError, OSError):
+                        break
 
             elif msg_type == "resize":
                 cols = msg.get("cols", 80)
                 rows = msg.get("rows", 24)
                 subprocess.run(
-                    ["tmux", "resize-window", "-t", session_name, "-x", str(cols), "-y", str(rows)],
+                    ["tmux", "resize-window", "-t", web_session,
+                     "-x", str(cols), "-y", str(rows)],
                     capture_output=True, timeout=2,
                 )
 
@@ -253,4 +247,12 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     finally:
         stop.set()
         caffeinate.release()
+        proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        # Clean up ephemeral web session
+        subprocess.run(["tmux", "kill-session", "-t", web_session],
+                       capture_output=True)
         print(f"[Terminal] Disconnected from '{session_name}'", file=sys.stderr)
