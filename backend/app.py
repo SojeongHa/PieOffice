@@ -9,6 +9,11 @@ import time
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_cors import CORS
+from flask_sock import Sock
+
+from terminal import handle_terminal_ws, list_tmux_sessions
+from terminal_auth import generate_token, validate_token
+from config import TERMINAL_LAN_MODE, TERMINAL_TOKEN_PATH, TERMINAL_TLS_CERT, TERMINAL_TLS_KEY
 
 # ---------------------------------------------------------------------------
 # Raise FD soft limit — prevents "Too many open files" after Mac sleep
@@ -98,7 +103,14 @@ INSTANCE_SLOT_COUNT = len(_theme_config.get("instance_slots", []))
 # App
 # ---------------------------------------------------------------------------
 app = Flask(__name__, static_folder=None)
-CORS(app, origins=["http://localhost:10317", "http://localhost:10318", "http://127.0.0.1:10317", "http://127.0.0.1:10318"])
+if TERMINAL_LAN_MODE:
+    CORS(app)
+else:
+    CORS(app, origins=[
+        "http://localhost:10317", "http://localhost:10318",
+        "http://127.0.0.1:10317", "http://127.0.0.1:10318",
+    ])
+sock = Sock(app)
 announcer = MessageAnnouncer()
 
 # ---------------------------------------------------------------------------
@@ -419,6 +431,38 @@ def theme_file(filename):
 
 
 # ---------------------------------------------------------------------------
+# Terminal routes
+# ---------------------------------------------------------------------------
+
+
+@app.route("/terminal")
+def terminal_page():
+    return send_from_directory(os.path.join(PROJECT_ROOT, "frontend"), "terminal.html")
+
+
+@app.route("/terminal/sessions")
+def terminal_sessions():
+    """List available Claude tmux sessions (requires token in Authorization header)."""
+    auth = request.headers.get("Authorization", "")
+    token = auth.removeprefix("Bearer ").strip()
+    if not validate_token(token, TERMINAL_TOKEN_PATH):
+        return jsonify({"error": "unauthorized"}), 401
+    sessions = list_tmux_sessions()
+    return jsonify({
+        "sessions": [
+            {"name": s.name, "windows": s.windows, "attached": s.attached, "cwd": s.cwd}
+            for s in sessions
+        ]
+    })
+
+
+@sock.route("/terminal/ws/<session_name>")
+def terminal_ws(ws, session_name):
+    """WebSocket endpoint for terminal I/O relay to a tmux session."""
+    handle_terminal_ws(ws, session_name)
+
+
+# ---------------------------------------------------------------------------
 # Stale agent sweep — background thread
 # ---------------------------------------------------------------------------
 def _stale_sweep_loop():
@@ -461,4 +505,17 @@ if __name__ == "__main__":
     socketserver.TCPServer.timeout = SOCKET_TIMEOUT
     WSGIRequestHandler.timeout = SOCKET_TIMEOUT
 
-    app.run(host="127.0.0.1", port=PORT, threaded=True, debug=False)
+    host = "0.0.0.0" if TERMINAL_LAN_MODE else "127.0.0.1"
+    ssl_ctx = None
+    if TERMINAL_LAN_MODE:
+        token = generate_token(TERMINAL_TOKEN_PATH)
+        print(f"[Terminal] LAN mode enabled — host={host}", file=sys.stderr)
+        print(f"[Terminal] Auth token: {token}", file=sys.stderr)
+        if os.path.isfile(TERMINAL_TLS_CERT) and os.path.isfile(TERMINAL_TLS_KEY):
+            ssl_ctx = (TERMINAL_TLS_CERT, TERMINAL_TLS_KEY)
+            print("[Terminal] TLS enabled", file=sys.stderr)
+        else:
+            print("[Terminal] WARNING: No TLS cert found. Run setup-terminal.sh first.",
+                  file=sys.stderr)
+
+    app.run(host=host, port=PORT, threaded=True, debug=False, ssl_context=ssl_ctx)
