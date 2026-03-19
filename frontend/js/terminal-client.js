@@ -20,7 +20,7 @@
   acquireSessionToken();
 
   function acquireSessionToken() {
-    fetch(location.origin + "/terminal/session-token", { method: "POST" })
+    fetch(location.origin + "/session-token", { method: "POST" })
       .then(function (r) {
         if (!r.ok) {
           showError("Device not authorized. Install client certificate.");
@@ -46,7 +46,7 @@
   // ── Session List (auto-sync) ──────────────────────────
 
   function fetchSessions() {
-    return fetch(location.origin + "/terminal/sessions", {
+    return fetch(location.origin + "/sessions", {
       headers: { Authorization: "Bearer " + token },
     }).then(function (r) {
       if (r.status === 401) {
@@ -194,7 +194,7 @@
     requestAnimationFrame(function () { fitAddon.fit(); });
 
     var wsProto = location.protocol === "https:" ? "wss" : "ws";
-    ws = new WebSocket(wsProto + "://" + location.host + "/terminal/ws/" + sessionName);
+    ws = new WebSocket(wsProto + "://" + location.host + "/ws/" + sessionName);
 
     ws.onopen = function () {
       ws.send(JSON.stringify({ type: "auth", token: token }));

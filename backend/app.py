@@ -9,10 +9,7 @@ import time
 
 from flask import Flask, Response, jsonify, request, send_from_directory
 from flask_cors import CORS
-from flask_sock import Sock
 
-from terminal import handle_terminal_ws, list_tmux_sessions
-from terminal_auth import SessionTokenStore
 import config as terminal_config
 
 # ---------------------------------------------------------------------------
@@ -103,15 +100,10 @@ INSTANCE_SLOT_COUNT = len(_theme_config.get("instance_slots", []))
 # App
 # ---------------------------------------------------------------------------
 app = Flask(__name__, static_folder=None)
-if terminal_config.TERMINAL_LAN_MODE:
-    CORS(app)
-else:
-    CORS(app, origins=[
-        "http://localhost:10317", "http://localhost:10318",
-        "http://127.0.0.1:10317", "http://127.0.0.1:10318",
-    ])
-sock = Sock(app)
-session_tokens = SessionTokenStore(ttl=terminal_config.TERMINAL_SESSION_TOKEN_TTL)
+CORS(app, origins=[
+    "http://localhost:10317", "http://localhost:10318",
+    "http://127.0.0.1:10317", "http://127.0.0.1:10318",
+])
 announcer = MessageAnnouncer()
 
 # ---------------------------------------------------------------------------
@@ -431,47 +423,6 @@ def theme_file(filename):
     return send_from_directory(theme_dir, filename)
 
 
-# ---------------------------------------------------------------------------
-# Terminal routes
-# ---------------------------------------------------------------------------
-
-
-@app.route("/terminal")
-def terminal_page():
-    """Serve terminal page. In LAN mode, mTLS ensures only registered devices reach here."""
-    return send_from_directory(os.path.join(PROJECT_ROOT, "frontend"), "terminal.html")
-
-
-@app.route("/terminal/session-token", methods=["POST"])
-def terminal_session_token():
-    """Issue a session token after mTLS handshake.
-    mTLS already authenticated the device at TLS layer, so this just issues
-    a token for WebSocket auth (browsers don't pass client certs on WS)."""
-    token = session_tokens.issue()
-    return jsonify({"token": token})
-
-
-@app.route("/terminal/sessions")
-def terminal_sessions():
-    """List available Claude tmux sessions (requires session token)."""
-    auth = request.headers.get("Authorization", "")
-    token = auth.removeprefix("Bearer ").strip()
-    if not session_tokens.validate(token):
-        return jsonify({"error": "unauthorized"}), 401
-    sessions = list_tmux_sessions()
-    return jsonify({
-        "sessions": [
-            {"name": s.name, "windows": s.windows, "attached": s.attached, "cwd": s.cwd}
-            for s in sessions
-        ]
-    })
-
-
-@sock.route("/terminal/ws/<session_name>")
-def terminal_ws(ws, session_name):
-    """WebSocket endpoint for terminal I/O relay to a tmux session."""
-    handle_terminal_ws(ws, session_name, session_tokens)
-
 
 # ---------------------------------------------------------------------------
 # Stale agent sweep — background thread
@@ -516,27 +467,9 @@ if __name__ == "__main__":
     socketserver.TCPServer.timeout = SOCKET_TIMEOUT
     WSGIRequestHandler.timeout = SOCKET_TIMEOUT
 
-    host = "0.0.0.0" if terminal_config.TERMINAL_LAN_MODE else "127.0.0.1"
-    ssl_ctx = None
+    # Start terminal server on separate port if LAN mode enabled
     if terminal_config.TERMINAL_LAN_MODE:
-        print(f"[Terminal] LAN mode enabled — host={host}", file=sys.stderr)
-        cert = terminal_config.TERMINAL_TLS_CERT
-        key = terminal_config.TERMINAL_TLS_KEY
-        ca = terminal_config.TERMINAL_TLS_CA
-        if os.path.isfile(cert) and os.path.isfile(key):
-            import ssl
-            ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            ssl_ctx.load_cert_chain(cert, key)
-            if os.path.isfile(ca):
-                ssl_ctx.load_verify_locations(ca)
-                ssl_ctx.verify_mode = ssl.CERT_REQUIRED
-                print("[Terminal] mTLS enabled — client certificate required",
-                      file=sys.stderr)
-            else:
-                print("[Terminal] TLS enabled (no mTLS — CA cert not found)",
-                      file=sys.stderr)
-        else:
-            print("[Terminal] WARNING: No TLS cert found. Run setup-terminal.sh first.",
-                  file=sys.stderr)
+        from terminal_server import start_terminal_server_thread
+        start_terminal_server_thread()
 
-    app.run(host=host, port=PORT, threaded=True, debug=False, ssl_context=ssl_ctx)
+    app.run(host="127.0.0.1", port=PORT, threaded=True, debug=False)
