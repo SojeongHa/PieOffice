@@ -175,21 +175,20 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     ws.send(json.dumps({"type": "connected", "session": session_name}))
     caffeinate.acquire()
 
-    # Spawn a pty running a shell that attaches to the tmux session.
-    # Use pty.fork() which properly sets up the controlling terminal.
-    child_pid, master_fd = pty.fork()
+    # Create a pty pair and spawn tmux as a subprocess.
+    # new-session -t creates a shared client (allows laptop + phone simultaneously).
+    master_fd, slave_fd = pty.openpty()
+    web_session = f"web-{threading.current_thread().ident}"
+    proc = subprocess.Popen(
+        ["tmux", "new-session", "-t", session_name, "-s", web_session],
+        stdin=slave_fd,
+        stdout=slave_fd,
+        stderr=slave_fd,
+        preexec_fn=os.setsid,
+    )
+    os.close(slave_fd)  # parent only needs master
 
-    if child_pid == 0:
-        # Child process — exec tmux attach
-        # Use new-session -t to create a shared client to the same session.
-        # This allows multiple viewers (laptop + phone) simultaneously,
-        # unlike attach-session which can conflict with existing clients.
-        os.execlp("tmux", "tmux", "new-session", "-t", session_name, "-s", f"web-{os.getpid()}")
-        # If exec fails, exit
-        os._exit(1)
-
-    # Parent process — relay I/O between WebSocket and pty master
-    print(f"[Terminal] Attached to tmux session '{session_name}' (pid={child_pid})",
+    print(f"[Terminal] Attached to tmux session '{session_name}' (pid={proc.pid})",
           file=sys.stderr)
 
     stop = threading.Event()
@@ -218,13 +217,10 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
             print(f"[Terminal] pty reader exception: {e}", file=sys.stderr)
         finally:
             # Check child process status
-            try:
-                pid_result, status = os.waitpid(child_pid, os.WNOHANG)
-                if pid_result != 0:
-                    print(f"[Terminal] tmux child exited with status {status}",
-                          file=sys.stderr)
-            except ChildProcessError:
-                print("[Terminal] tmux child already reaped", file=sys.stderr)
+            ret = proc.poll()
+            if ret is not None:
+                print(f"[Terminal] tmux process exited with code {ret}",
+                      file=sys.stderr)
             stop.set()
 
     reader = threading.Thread(target=_read_pty, daemon=True)
@@ -265,10 +261,9 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
             os.close(master_fd)
         except OSError:
             pass
-        # Clean up child process
-        try:
-            os.kill(child_pid, 9)
-            os.waitpid(child_pid, 0)
-        except OSError:
-            pass
+        proc.terminate()
+        proc.wait()
+        # Clean up the ephemeral web session
+        subprocess.run(["tmux", "kill-session", "-t", web_session],
+                       capture_output=True)
         print(f"[Terminal] Disconnected from '{session_name}'", file=sys.stderr)
