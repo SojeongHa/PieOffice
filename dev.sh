@@ -1,7 +1,13 @@
 #!/bin/bash
 # Pie Office dev server launcher
-# Usage: ./dev.sh [port]  (default: 10317)
+# Usage: ./dev.sh [port] [--lan]
 PORT=${1:-10317}
+LAN_MODE=""
+for arg in "$@"; do
+    if [ "$arg" = "--lan" ]; then
+        LAN_MODE=1
+    fi
+done
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Kill existing process on port
@@ -11,4 +17,4 @@ lsof -ti:"$PORT" 2>/dev/null | xargs kill -9 2>/dev/null
 cd "$DIR"
 source venv/bin/activate
 echo "Starting Pie Office on :$PORT ..."
-PORT=$PORT python3 backend/app.py
+PIE_TERMINAL_LAN=$LAN_MODE PORT=$PORT python3 backend/app.py
