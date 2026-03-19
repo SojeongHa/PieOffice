@@ -175,29 +175,30 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     ws.send(json.dumps({"type": "connected", "session": session_name}))
     caffeinate.acquire()
 
-    # Spawn tmux attach in a pty
-    pid, fd = pty.openpty()
-    proc = subprocess.Popen(
-        ["tmux", "attach-session", "-t", session_name],
-        stdin=fd,
-        stdout=fd,
-        stderr=fd,
-        close_fds=True,
-        preexec_fn=os.setsid,
-    )
-    os.close(fd)  # parent doesn't need the slave side
+    # Spawn a pty running a shell that attaches to the tmux session.
+    # Use pty.fork() which properly sets up the controlling terminal.
+    child_pid, master_fd = pty.fork()
 
-    # --- I/O relay ---
+    if child_pid == 0:
+        # Child process — exec tmux attach
+        os.execlp("tmux", "tmux", "attach-session", "-t", session_name)
+        # If exec fails, exit
+        os._exit(1)
+
+    # Parent process — relay I/O between WebSocket and pty master
+    print(f"[Terminal] Attached to tmux session '{session_name}' (pid={child_pid})",
+          file=sys.stderr)
+
     stop = threading.Event()
 
     def _read_pty():
-        """Read from pty master (pid) and send to WebSocket."""
+        """Read from pty master and send to WebSocket."""
         try:
             while not stop.is_set():
-                r, _, _ = select.select([pid], [], [], 1.0)
+                r, _, _ = select.select([master_fd], [], [], 1.0)
                 if r:
                     try:
-                        data = os.read(pid, 4096)
+                        data = os.read(master_fd, 4096)
                         if not data:
                             break
                         ws.send(
@@ -228,13 +229,13 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
             if msg.get("type") == "input":
                 data = msg.get("data", "")
                 if data:
-                    os.write(pid, data.encode("utf-8"))
+                    os.write(master_fd, data.encode("utf-8"))
 
             elif msg.get("type") == "resize":
                 cols = msg.get("cols", 80)
                 rows = msg.get("rows", 24)
                 winsize = struct.pack("HHHH", rows, cols, 0, 0)
-                fcntl.ioctl(pid, termios.TIOCSWINSZ, winsize)
+                fcntl.ioctl(master_fd, termios.TIOCSWINSZ, winsize)
 
     except Exception as e:
         print(f"[Terminal] WebSocket error: {e}", file=sys.stderr)
@@ -242,7 +243,13 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
         stop.set()
         caffeinate.release()
         try:
-            os.close(pid)
+            os.close(master_fd)
         except OSError:
             pass
-        proc.terminate()
+        # Clean up child process
+        try:
+            os.kill(child_pid, 9)
+            os.waitpid(child_pid, 0)
+        except OSError:
+            pass
+        print(f"[Terminal] Disconnected from '{session_name}'", file=sys.stderr)
