@@ -196,8 +196,16 @@
     var wsProto = location.protocol === "https:" ? "wss" : "ws";
     ws = new WebSocket(wsProto + "://" + location.host + "/ws/" + sessionName);
 
+    var pingInterval = null;
+
     ws.onopen = function () {
       ws.send(JSON.stringify({ type: "auth", token: token }));
+      // Keep connection alive — Safari/iOS kills idle WebSockets after ~5s
+      pingInterval = setInterval(function () {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "ping" }));
+        }
+      }, 3000);
     };
 
     ws.onmessage = function (event) {
@@ -218,6 +226,7 @@
     };
 
     ws.onclose = function () {
+      if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
       setStatus("disconnected", "Disconnected");
       scheduleReconnect(sessionName);
     };

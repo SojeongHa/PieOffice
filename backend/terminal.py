@@ -203,17 +203,28 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
                     try:
                         data = os.read(master_fd, 4096)
                         if not data:
+                            print(f"[Terminal] pty read returned empty — child exited",
+                                  file=sys.stderr)
                             break
                         ws.send(
                             json.dumps(
                                 {"type": "output", "data": data.decode("utf-8", errors="replace")}
                             )
                         )
-                    except OSError:
+                    except OSError as e:
+                        print(f"[Terminal] pty read OSError: {e}", file=sys.stderr)
                         break
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[Terminal] pty reader exception: {e}", file=sys.stderr)
         finally:
+            # Check child process status
+            try:
+                pid_result, status = os.waitpid(child_pid, os.WNOHANG)
+                if pid_result != 0:
+                    print(f"[Terminal] tmux child exited with status {status}",
+                          file=sys.stderr)
+            except ChildProcessError:
+                print("[Terminal] tmux child already reaped", file=sys.stderr)
             stop.set()
 
     reader = threading.Thread(target=_read_pty, daemon=True)
@@ -223,13 +234,18 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
         while not stop.is_set():
             raw = ws.receive(timeout=2)
             if raw is None:
+                print("[Terminal] WebSocket received None — client disconnected",
+                      file=sys.stderr)
                 break
             try:
                 msg = json.loads(raw)
             except (json.JSONDecodeError, TypeError):
                 continue
 
-            if msg.get("type") == "input":
+            if msg.get("type") == "ping":
+                continue  # keepalive — ignore
+
+            elif msg.get("type") == "input":
                 data = msg.get("data", "")
                 if data:
                     os.write(master_fd, data.encode("utf-8"))
