@@ -84,17 +84,30 @@ cd ~/Documents/workspace/PieOffice && ./scripts/setup-terminal.sh --revoke && ./
 
 ### Step 4: iPhone Certificate Installation Guide
 
-Walk the user through installing the client certificate on their iPhone:
+Walk the user through installing certificates on their iPhone. **Order matters** — CA first, then client cert.
 
-1. Open Finder and navigate to `~/.pieoffice-tls/client.p12`
-   - Finder → Go → Go to Folder → `~/.pieoffice-tls`
-2. AirDrop the `client.p12` file to iPhone
-3. On iPhone: Settings → General → VPN & Device Management
-4. Tap "Profile Downloaded" → Install
-5. Enter password: `pieoffice`
-6. Installation complete
+Open the certificate directory in Finder for the user:
+```bash
+open ~/.pieoffice-tls/
+```
 
-Ask the user to confirm they have completed the certificate installation before proceeding.
+**Part A: Install CA certificate (makes client cert show as "signed")**
+
+1. AirDrop `ca.pem` to iPhone
+2. On iPhone: Settings → General → VPN & Device Management
+3. Tap "Profile Downloaded" → Install "PieOffice CA"
+4. Go to Settings → General → About → Certificate Trust Settings
+5. Toggle ON "PieOffice CA" under "Enable Full Trust For Root Certificates"
+
+**Part B: Install client certificate**
+
+1. AirDrop `client.p12` to iPhone
+2. On iPhone: Settings → General → VPN & Device Management
+3. Tap "Profile Downloaded" → Install
+4. Enter password: `pieoffice`
+5. Profile should show as **signed by "PieOffice CA"**
+
+Ask the user to confirm they have completed both installations before proceeding.
 
 ### Step 5: Test Connection
 
