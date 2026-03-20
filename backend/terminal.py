@@ -175,11 +175,11 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
 
     # `script -q /dev/null` allocates a pty for us — Python just uses pipes.
     # This avoids pty.openpty()/pty.fork() which segfault in threaded Flask.
-    web_session = f"web-{threading.current_thread().ident}"
-
+    # Use attach-session (not new-session -t) to avoid grouped sessions that
+    # leave orphaned size constraints after disconnect.
     proc = subprocess.Popen(
         ["script", "-q", "/dev/null",
-         "tmux", "new-session", "-t", session_name, "-s", web_session],
+         "tmux", "attach-session", "-t", session_name],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -248,25 +248,10 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     finally:
         stop.set()
         caffeinate.release()
-        # Kill the script process
         proc.terminate()
         try:
             proc.wait(timeout=3)
         except subprocess.TimeoutExpired:
             proc.kill()
-            proc.wait()
-        # Kill the ephemeral web tmux session AND force-kill any grouped clients
-        subprocess.run(["tmux", "kill-session", "-t", web_session],
-                       capture_output=True)
-        # Also kill by PID in case the session name doesn't match
-        try:
-            os.kill(proc.pid, 9)
-        except OSError:
-            pass
-        # Wait for tmux to fully clean up the session
-        time.sleep(0.5)
-        # Resize all windows in the original session back to fit the laptop
-        subprocess.run(["tmux", "resize-window", "-A", "-t", session_name],
-                       capture_output=True)
-        print(f"[Terminal] Disconnected from '{session_name}', restored window size",
-              file=sys.stderr)
+        # tmux auto-resizes to remaining clients when this client detaches
+        print(f"[Terminal] Disconnected from '{session_name}'", file=sys.stderr)

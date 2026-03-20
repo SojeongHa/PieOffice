@@ -102,22 +102,6 @@ def terminal_ws(ws, session_name):
     handle_terminal_ws(ws, session_name, session_tokens)
 
 
-@terminal_app.route("/restore-size", methods=["POST"])
-def restore_size():
-    """Restore tmux window size after phone disconnect.
-    Tells tmux to re-fit to the laptop client's size."""
-    auth = request.headers.get("Authorization", "")
-    tok = auth.removeprefix("Bearer ").strip()
-    if not session_tokens.validate(tok):
-        return jsonify({"error": "unauthorized"}), 401
-    data = request.get_json(force=True, silent=True) or {}
-    session = data.get("session", "")
-    if session:
-        # Force tmux to resize back to the laptop client's terminal size
-        import subprocess as sp
-        sp.run(["tmux", "resize-window", "-A", "-t", session], capture_output=True, timeout=2)
-    return jsonify({"ok": True})
-
 
 @terminal_app.route("/health")
 def health():
