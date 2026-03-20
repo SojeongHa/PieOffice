@@ -262,11 +262,9 @@
   window._termToggleScroll = function () {
     var btn = document.getElementById("btn-scroll-mode");
     if (!scrollMode) {
-      // Enter tmux scroll mode, then scroll up 15 lines
+      // Enter tmux scroll mode, then Page Up once (half screen)
       window._termSend("\x02[");
-      setTimeout(function () {
-        for (var i = 0; i < 15; i++) window._termSend("\x1b[A");
-      }, 100);
+      setTimeout(function () { window._termSend("\x1b[5~"); }, 100);
       scrollMode = true;
       btn.textContent = "Exit Scroll";
       btn.style.background = "var(--bg-sidebar-active)";
