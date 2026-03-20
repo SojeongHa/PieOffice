@@ -216,7 +216,6 @@
     #disconnect-btn:hover { color: var(--red); border-color: var(--red); }
 
     #terminal-container { flex: 1; overflow: hidden; }
-    .xterm-viewport { overflow-y: auto !important; -webkit-overflow-scrolling: touch !important; }
 
     /* Quick action bar */
     #quick-actions {
@@ -362,13 +361,14 @@
           <button onclick="sendInput()">Send</button>
         </div>
         <div id="action-buttons">
+          <button onclick="scrollUp()">&#8593;</button>
+          <button onclick="scrollBottom()">&#8595;</button>
           <button onclick="sendQuick('1\n')">1</button>
           <button onclick="sendQuick('2\n')">2</button>
           <button onclick="sendQuick('3\n')">3</button>
           <button onclick="sendQuick('y\n')">y</button>
           <button onclick="sendQuick('n\n')">n</button>
           <button onclick="sendQuick('\n')">Enter</button>
-          <button onclick="scrollBottom()">&#8595;</button>
         </div>
       </div>
     </div>

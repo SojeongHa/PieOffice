@@ -167,41 +167,6 @@
 
     new ResizeObserver(function () { fitAddon.fit(); }).observe(termContainer);
 
-    // Force touch scrolling — capture at document level before xterm gets it.
-    // Only activate when touch is inside the terminal container.
-    (function () {
-      var startY = 0;
-      var scrolling = false;
-      var inTerminal = false;
-
-      document.addEventListener("touchstart", function (e) {
-        inTerminal = termContainer.contains(e.target);
-        if (inTerminal) {
-          startY = e.touches[0].clientY;
-          scrolling = false;
-        }
-      }, { capture: true, passive: true });
-
-      document.addEventListener("touchmove", function (e) {
-        if (!inTerminal || !term) return;
-        var dy = startY - e.touches[0].clientY;
-        if (Math.abs(dy) > 3) {
-          scrolling = true;
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          term.scrollLines(dy > 0 ? 2 : -2);
-          startY = e.touches[0].clientY;
-        }
-      }, { capture: true, passive: false });
-
-      document.addEventListener("touchend", function (e) {
-        if (scrolling && inTerminal) {
-          e.stopImmediatePropagation();
-        }
-        scrolling = false;
-        inTerminal = false;
-      }, { capture: true, passive: true });
-    })();
 
 
     // WebSocket to asyncio terminal server
@@ -297,6 +262,10 @@
       sendInput();
     }
   });
+
+  window.scrollUp = function () {
+    if (term) term.scrollLines(-10);
+  };
 
   window.scrollBottom = function () {
     if (term) term.scrollToBottom();
