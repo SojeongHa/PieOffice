@@ -199,7 +199,7 @@
     term.loadAddon(new WebLinksAddon.WebLinksAddon());
     term.open(termContainer);
 
-    requestAnimationFrame(function () { fitAddon.fit(); });
+    new ResizeObserver(function () { fitAddon.fit(); }).observe(termContainer);
 
     var wsProto = location.protocol === "https:" ? "wss" : "ws";
     ws = new WebSocket(wsProto + "://" + location.host + "/ws/" + sessionName);
@@ -248,9 +248,6 @@
         ws.send(JSON.stringify({ type: "input", data: data }));
       }
     });
-
-    window.removeEventListener("resize", handleResize);
-    window.addEventListener("resize", handleResize);
 
     term.onResize(function (size) {
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -303,9 +300,6 @@
     }
   };
 
-  function handleResize() {
-    if (fitAddon) fitAddon.fit();
-  }
 
   function setStatus(state, text) {
     var dot = document.getElementById("status-dot");
