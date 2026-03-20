@@ -257,5 +257,10 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
             proc.wait(timeout=3)
         except subprocess.TimeoutExpired:
             proc.kill()
-        # tmux auto-resizes to remaining clients when this client detaches
+        # Wait for tmux to detect the dead client, then force resize
+        time.sleep(0.3)
+        subprocess.run(
+            ["tmux", "resize-window", "-A", "-t", session_name],
+            capture_output=True,
+        )
         print(f"[Terminal] Disconnected from '{session_name}'", file=sys.stderr)
