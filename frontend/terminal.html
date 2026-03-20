@@ -358,17 +358,17 @@
       <div id="quick-actions" style="display:none;">
         <div id="input-bar">
           <input type="text" id="term-input" placeholder="Type here (IME supported)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
-          <button id="btn-send">Send</button>
+          <button ontouchend="window._termSendInput()">Send</button>
         </div>
         <div id="action-buttons">
-          <button id="btn-up">&#8593;</button>
-          <button id="btn-down">&#8595;</button>
-          <button class="btn-quick" data-keys="1&#10;">1</button>
-          <button class="btn-quick" data-keys="2&#10;">2</button>
-          <button class="btn-quick" data-keys="3&#10;">3</button>
-          <button class="btn-quick" data-keys="y&#10;">y</button>
-          <button class="btn-quick" data-keys="n&#10;">n</button>
-          <button class="btn-quick" data-keys="&#10;">Enter</button>
+          <button ontouchend="window._termScrollUp()">&#8593;</button>
+          <button ontouchend="window._termScrollDown()">&#8595;</button>
+          <button ontouchend="window._termSend('1')">1</button>
+          <button ontouchend="window._termSend('2')">2</button>
+          <button ontouchend="window._termSend('3')">3</button>
+          <button ontouchend="window._termSend('y\n')">y</button>
+          <button ontouchend="window._termSend('n\n')">n</button>
+          <button ontouchend="window._termSend('\n')">Enter</button>
         </div>
       </div>
     </div>
