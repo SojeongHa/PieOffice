@@ -242,6 +242,7 @@ async def process_request(connection, request):
     """Handle plain HTTP requests (non-WebSocket upgrade).
     websockets v16 signature: process_request(connection, request)."""
     path = request.path
+    print(f"[Terminal] HTTP {request.method if hasattr(request, 'method') else '?'} {path}", file=sys.stderr)
 
     if path.startswith("/ws/"):
         return None  # let WebSocket handler take over
