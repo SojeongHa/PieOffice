@@ -2,13 +2,23 @@
 
 import json
 import os
+import re
+import select
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
 
 from config import TERMINAL_IDLE_TIMEOUT
+
+# Filter out terminal status line sequences (DCS, OSC) that corrupt xterm.js.
+# Matches: ESC P ... ST, ESC ] ... ST, ESC ] ... BEL
+_STATUS_LINE_RE = re.compile(
+    r"(\x1bP[^\x1b]*(?:\x1b\\|\x07))"   # DCS ... ST
+    r"|(\x1b\][^\x07\x1b]*(?:\x07|\x1b\\))"  # OSC ... BEL/ST
+)
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +145,58 @@ caffeinate = CaffeinateManager()
 # ---------------------------------------------------------------------------
 
 
+# Map xterm.js escape sequences to tmux key names
+_SPECIAL_KEYS = {
+    "\r": "Enter",
+    "\x7f": "BSpace",
+    "\x1b[A": "Up",
+    "\x1b[B": "Down",
+    "\x1b[C": "Right",
+    "\x1b[D": "Left",
+    "\x1b[H": "Home",
+    "\x1b[F": "End",
+    "\x1b[2~": "IC",      # Insert
+    "\x1b[3~": "DC",      # Delete
+    "\x1b[5~": "PPage",   # PageUp
+    "\x1b[6~": "NPage",   # PageDown
+    "\x09": "Tab",
+    "\x1b": "Escape",
+}
+
+
+def _send_tmux_keys(session_name: str, data: str) -> None:
+    """Send keystrokes to tmux, handling special keys correctly."""
+    i = 0
+    while i < len(data):
+        matched = False
+        # Try matching longest special key sequences first
+        for seq, key_name in sorted(_SPECIAL_KEYS.items(), key=lambda x: -len(x[0])):
+            if data[i:].startswith(seq):
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", session_name, key_name],
+                    capture_output=True, timeout=2,
+                )
+                i += len(seq)
+                matched = True
+                break
+        if not matched:
+            ch = data[i]
+            if ord(ch) < 32 and ch not in ("\r", "\n", "\t", "\x1b"):
+                # Control character: Ctrl+A = C-a, etc.
+                ctrl_char = chr(ord(ch) + 64)
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", session_name, f"C-{ctrl_char.lower()}"],
+                    capture_output=True, timeout=2,
+                )
+            else:
+                # Regular character — send literal
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", session_name, "-l", ch],
+                    capture_output=True, timeout=2,
+                )
+            i += 1
+
+
 def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     """WebSocket handler: relay I/O to tmux via pipe-pane + send-keys.
 
@@ -172,8 +234,16 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     ws.send(json.dumps({"type": "connected", "session": session_name}))
     caffeinate.acquire()
 
-    # Create a FIFO for pipe-pane output
-    import tempfile
+    # Send current visible pane content first (not full scrollback)
+    r = subprocess.run(
+        ["tmux", "capture-pane", "-t", session_name, "-p", "-e"],
+        capture_output=True, text=True,
+    )
+    if r.returncode == 0 and r.stdout:
+        clean = _STATUS_LINE_RE.sub("", r.stdout)
+        ws.send(json.dumps({"type": "output", "data": clean}))
+
+    # Create a FIFO for pipe-pane output (new output only, going forward)
     fifo_dir = tempfile.mkdtemp(prefix="pieterm-")
     fifo_path = os.path.join(fifo_dir, "pane.fifo")
     os.mkfifo(fifo_path)
@@ -192,16 +262,18 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
         """Read pane output from FIFO and send to WebSocket."""
         try:
             fd = os.open(fifo_path, os.O_RDONLY | os.O_NONBLOCK)
-            import select
             while not stop.is_set():
                 r, _, _ = select.select([fd], [], [], 1.0)
                 if r:
                     data = os.read(fd, 4096)
                     if data:
-                        ws.send(json.dumps({
-                            "type": "output",
-                            "data": data.decode("utf-8", errors="replace"),
-                        }))
+                        text = data.decode("utf-8", errors="replace")
+                        clean = _STATUS_LINE_RE.sub("", text)
+                        if clean:
+                            ws.send(json.dumps({
+                                "type": "output",
+                                "data": clean,
+                            }))
         except Exception as e:
             if not stop.is_set():
                 print(f"[Terminal] fifo reader error: {e}", file=sys.stderr)
@@ -234,10 +306,8 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
             elif msg_type == "input":
                 data = msg.get("data", "")
                 if data:
-                    subprocess.run(
-                        ["tmux", "send-keys", "-t", session_name, "-l", data],
-                        capture_output=True, timeout=2,
-                    )
+                    # Map control characters to tmux key names
+                    _send_tmux_keys(session_name, data)
 
     except Exception as e:
         print(f"[Terminal] WebSocket error: {e}", file=sys.stderr)
