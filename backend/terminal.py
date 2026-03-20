@@ -336,16 +336,15 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
             os.rmdir(fifo_dir)
         except OSError:
             pass
-        # Restore laptop size: send SIGWINCH to the tmux client so it
-        # re-reads the terminal dimensions. No resize-window needed.
-        r = subprocess.run(
-            ["tmux", "list-clients", "-t", session_name, "-F", "#{client_pid}"],
-            capture_output=True, text=True,
+        # Restore laptop size:
+        # 1. resize-window -A to fit to current client
+        # 2. Re-set window-size to 'smallest' to re-enable auto-resize
+        subprocess.run(
+            ["tmux", "resize-window", "-A", "-t", session_name],
+            capture_output=True,
         )
-        if r.returncode == 0:
-            for pid_str in r.stdout.strip().splitlines():
-                try:
-                    os.kill(int(pid_str), signal.SIGWINCH)
-                except (OSError, ValueError):
-                    pass
+        subprocess.run(
+            ["tmux", "set-option", "-g", "window-size", "smallest"],
+            capture_output=True,
+        )
         print(f"[Terminal] Disconnected from '{session_name}'", file=sys.stderr)

@@ -202,6 +202,16 @@
 
     new ResizeObserver(function () { fitAddon.fit(); }).observe(termContainer);
 
+    // iOS keyboard: visualViewport shrinks but layout doesn't.
+    // Adjust container height so ResizeObserver triggers fit.
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", function () {
+        var vv = window.visualViewport;
+        var headerH = document.getElementById("terminal-header").offsetHeight || 0;
+        termContainer.style.height = (vv.height - headerH) + "px";
+      });
+    }
+
     var wsProto = location.protocol === "https:" ? "wss" : "ws";
     ws = new WebSocket(wsProto + "://" + location.host + "/ws/" + sessionName);
 
