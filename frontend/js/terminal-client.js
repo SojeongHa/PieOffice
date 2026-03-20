@@ -262,8 +262,9 @@
   window._termToggleScroll = function () {
     var btn = document.getElementById("btn-scroll-mode");
     if (!scrollMode) {
-      // Enter tmux scroll mode
+      // Enter tmux scroll mode, then jump to top of scrollback
       window._termSend("\x02[");
+      setTimeout(function () { window._termSend("g"); }, 100);
       scrollMode = true;
       btn.textContent = "Exit Scroll";
       btn.style.background = "var(--bg-sidebar-active)";
