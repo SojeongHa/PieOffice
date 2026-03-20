@@ -235,15 +235,16 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     ws.send(json.dumps({"type": "connected", "session": session_name}))
     caffeinate.acquire()
 
-    # Send current visible pane content first (not full scrollback)
-    # -J joins wrapped lines, -e includes escape sequences for colors
+    # Send recent scrollback as plain text (no escape sequences = no width mismatch)
+    # -S -50 captures last 50 lines of scrollback + visible area
     r = subprocess.run(
-        ["tmux", "capture-pane", "-t", session_name, "-p", "-e", "-J"],
+        ["tmux", "capture-pane", "-t", session_name, "-p", "-S", "-50"],
         capture_output=True, text=True,
     )
     if r.returncode == 0 and r.stdout:
-        clean = _STATUS_LINE_RE.sub("", r.stdout)
-        ws.send(json.dumps({"type": "output", "data": clean}))
+        # Trim to last ~2000 chars
+        text = r.stdout[-2000:] if len(r.stdout) > 2000 else r.stdout
+        ws.send(json.dumps({"type": "output", "data": text}))
 
     # Create a FIFO for pipe-pane output (new output only, going forward)
     fifo_dir = tempfile.mkdtemp(prefix="pieterm-")
