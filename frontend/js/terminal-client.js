@@ -167,37 +167,7 @@
 
     new ResizeObserver(function () { fitAddon.fit(); }).observe(termContainer);
 
-    // Touch scrolling for iOS — intercept on the xterm screen element
-    // which is where xterm.js captures touch events for selection
-    setTimeout(function () {
-      var screen = termContainer.querySelector(".xterm-screen");
-      if (!screen) return;
-      var touchStartY = null;
-      screen.addEventListener("touchstart", function (e) {
-        if (e.touches.length === 1) touchStartY = e.touches[0].clientY;
-      }, { passive: true });
-      screen.addEventListener("touchmove", function (e) {
-        if (touchStartY === null || e.touches.length !== 1) return;
-        var dy = touchStartY - e.touches[0].clientY;
-        var lines = Math.round(dy / 15);
-        if (lines !== 0) {
-          term.scrollLines(lines);
-          touchStartY = e.touches[0].clientY;
-        }
-      }, { passive: false });
-    }, 500);
 
-    // iOS keyboard
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", function () {
-        var layout = document.getElementById("main-layout");
-        if (layout) layout.style.height = window.visualViewport.height + "px";
-      });
-      window.visualViewport.addEventListener("scroll", function () {
-        var layout = document.getElementById("main-layout");
-        if (layout) layout.style.height = window.visualViewport.height + "px";
-      });
-    }
 
     // WebSocket to asyncio terminal server
     var wsProto = location.protocol === "https:" ? "wss" : "ws";
@@ -262,7 +232,6 @@
     document.getElementById("terminal-container").innerHTML = "";
     document.getElementById("quick-actions").style.display = "none";
     document.getElementById("empty-state").style.display = "flex";
-    document.getElementById("main-layout").style.height = "";
 
     if (lastSessionsJson) renderSessionList(JSON.parse(lastSessionsJson));
   };
