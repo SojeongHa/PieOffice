@@ -189,17 +189,22 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
 
     stop = threading.Event()
 
+    stdout_fd = proc.stdout.fileno()
+
     def _read_output():
-        """Read subprocess stdout and send to WebSocket."""
+        """Read subprocess stdout via raw fd and send to WebSocket."""
         try:
-            while not stop.is_set() and proc.poll() is None:
-                data = proc.stdout.read(4096)
-                if not data:
+            while not stop.is_set():
+                try:
+                    data = os.read(stdout_fd, 4096)
+                    if not data:
+                        break
+                    ws.send(json.dumps({
+                        "type": "output",
+                        "data": data.decode("utf-8", errors="replace"),
+                    }))
+                except OSError:
                     break
-                ws.send(json.dumps({
-                    "type": "output",
-                    "data": data.decode("utf-8", errors="replace"),
-                }))
         except Exception as e:
             if not stop.is_set():
                 print(f"[Terminal] reader error: {e}", file=sys.stderr)
@@ -227,10 +232,9 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
 
             elif msg_type == "input":
                 data = msg.get("data", "")
-                if data and proc.stdin:
+                if data:
                     try:
-                        proc.stdin.write(data.encode("utf-8"))
-                        proc.stdin.flush()
+                        os.write(proc.stdin.fileno(), data.encode("utf-8"))
                     except (BrokenPipeError, OSError):
                         break
 
@@ -238,7 +242,7 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
                 cols = msg.get("cols", 80)
                 rows = msg.get("rows", 24)
                 subprocess.run(
-                    ["tmux", "resize-window", "-t", web_session,
+                    ["tmux", "resize-window", "-t", session_name,
                      "-x", str(cols), "-y", str(rows)],
                     capture_output=True, timeout=2,
                 )
