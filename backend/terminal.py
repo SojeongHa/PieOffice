@@ -235,8 +235,9 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     caffeinate.acquire()
 
     # Send current visible pane content first (not full scrollback)
+    # -J joins wrapped lines, -e includes escape sequences for colors
     r = subprocess.run(
-        ["tmux", "capture-pane", "-t", session_name, "-p", "-e"],
+        ["tmux", "capture-pane", "-t", session_name, "-p", "-e", "-J"],
         capture_output=True, text=True,
     )
     if r.returncode == 0 and r.stdout:
