@@ -4,6 +4,7 @@ import json
 import os
 import re
 import select
+import signal
 import subprocess
 import sys
 import tempfile
@@ -307,8 +308,17 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
             elif msg_type == "input":
                 data = msg.get("data", "")
                 if data:
-                    # Map control characters to tmux key names
                     _send_tmux_keys(session_name, data)
+
+            elif msg_type == "resize":
+                cols = msg.get("cols", 80)
+                rows = msg.get("rows", 24)
+                # Resize tmux window to phone size (laptop shrinks temporarily)
+                subprocess.run(
+                    ["tmux", "resize-window", "-t", session_name,
+                     "-x", str(cols), "-y", str(rows)],
+                    capture_output=True, timeout=2,
+                )
 
     except Exception as e:
         print(f"[Terminal] WebSocket error: {e}", file=sys.stderr)
@@ -326,4 +336,16 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
             os.rmdir(fifo_dir)
         except OSError:
             pass
+        # Restore laptop size: send SIGWINCH to the tmux client so it
+        # re-reads the terminal dimensions. No resize-window needed.
+        r = subprocess.run(
+            ["tmux", "list-clients", "-t", session_name, "-F", "#{client_pid}"],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0:
+            for pid_str in r.stdout.strip().splitlines():
+                try:
+                    os.kill(int(pid_str), signal.SIGWINCH)
+                except (OSError, ValueError):
+                    pass
         print(f"[Terminal] Disconnected from '{session_name}'", file=sys.stderr)

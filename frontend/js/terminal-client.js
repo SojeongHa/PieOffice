@@ -183,6 +183,7 @@
       fontSize: 13,
       fontFamily: '"Menlo", "Courier New", monospace',
       scrollback: 5000,
+      scrollSensitivity: 3,
       theme: {
         background: "#1a1a2e",
         foreground: "#D1D2D3",
