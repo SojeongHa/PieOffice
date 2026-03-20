@@ -252,11 +252,6 @@
     window.removeEventListener("resize", handleResize);
     window.addEventListener("resize", handleResize);
 
-    // iOS keyboard resize — use visualViewport API
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", handleResize);
-    }
-
     term.onResize(function (size) {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "resize", cols: size.cols, rows: size.rows }));
@@ -309,19 +304,7 @@
   };
 
   function handleResize() {
-    if (!fitAddon) return;
-
-    // On iOS, when keyboard opens, visualViewport.height shrinks but
-    // the layout viewport doesn't. We fix the #main-layout height to
-    // the visual viewport so everything fits above the keyboard.
-    if (window.visualViewport) {
-      var layout = document.getElementById("main-layout");
-      if (layout) {
-        layout.style.height = window.visualViewport.height + "px";
-      }
-    }
-
-    fitAddon.fit();
+    if (fitAddon) fitAddon.fit();
   }
 
   function setStatus(state, text) {
