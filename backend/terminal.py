@@ -142,191 +142,64 @@ caffeinate = CaffeinateManager()
 
 
 # ---------------------------------------------------------------------------
-# WebSocket handler — uses `script` to wrap tmux in a pty safely
+# ttyd process manager — one ttyd instance per tmux session
 # ---------------------------------------------------------------------------
 
-
-# Map xterm.js escape sequences to tmux key names
-_SPECIAL_KEYS = {
-    "\r": "Enter",
-    "\x7f": "BSpace",
-    "\x1b[A": "Up",
-    "\x1b[B": "Down",
-    "\x1b[C": "Right",
-    "\x1b[D": "Left",
-    "\x1b[H": "Home",
-    "\x1b[F": "End",
-    "\x1b[2~": "IC",      # Insert
-    "\x1b[3~": "DC",      # Delete
-    "\x1b[5~": "PPage",   # PageUp
-    "\x1b[6~": "NPage",   # PageDown
-    "\x09": "Tab",
-    "\x1b": "Escape",
-}
+# Active ttyd instances: session_name → {"proc": Popen, "port": int}
+_ttyd_instances: dict[str, dict] = {}
+_ttyd_lock = threading.Lock()
+_TTYD_PORT_BASE = 17600  # ttyd ports: 17600, 17601, ...
 
 
-def _send_tmux_keys(session_name: str, data: str) -> None:
-    """Send keystrokes to tmux, handling special keys correctly."""
-    i = 0
-    while i < len(data):
-        matched = False
-        # Try matching longest special key sequences first
-        for seq, key_name in sorted(_SPECIAL_KEYS.items(), key=lambda x: -len(x[0])):
-            if data[i:].startswith(seq):
-                subprocess.run(
-                    ["tmux", "send-keys", "-t", session_name, key_name],
-                    capture_output=True, timeout=2,
-                )
-                i += len(seq)
-                matched = True
+def get_or_start_ttyd(session_name: str) -> int | None:
+    """Start a ttyd process for a tmux session, return its port.
+    Reuses existing instance if already running."""
+    with _ttyd_lock:
+        if session_name in _ttyd_instances:
+            inst = _ttyd_instances[session_name]
+            if inst["proc"].poll() is None:
+                return inst["port"]
+            # Process died, clean up
+            del _ttyd_instances[session_name]
+
+        port = _TTYD_PORT_BASE + len(_ttyd_instances)
+        # Find an unused port
+        for p in range(_TTYD_PORT_BASE, _TTYD_PORT_BASE + 100):
+            if not any(i["port"] == p for i in _ttyd_instances.values()):
+                port = p
                 break
-        if not matched:
-            ch = data[i]
-            if ord(ch) < 32 and ch not in ("\r", "\n", "\t", "\x1b"):
-                # Control character: Ctrl+A = C-a, etc.
-                ctrl_char = chr(ord(ch) + 64)
-                subprocess.run(
-                    ["tmux", "send-keys", "-t", session_name, f"C-{ctrl_char.lower()}"],
-                    capture_output=True, timeout=2,
-                )
-            else:
-                # Regular character — send literal
-                subprocess.run(
-                    ["tmux", "send-keys", "-t", session_name, "-l", ch],
-                    capture_output=True, timeout=2,
-                )
-            i += 1
 
-
-def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
-    """WebSocket handler: relay I/O to tmux via pipe-pane + send-keys.
-
-    No extra tmux client is created — the laptop remains the only client,
-    so tmux auto-resize works perfectly. Output is streamed via pipe-pane
-    to a FIFO that we read. Input is sent via tmux send-keys.
-
-    Protocol:
-    - Client sends JSON: {"type": "auth", "token": "..."} first
-    - Client sends JSON: {"type": "input", "data": "..."} for keystrokes
-    - Client sends JSON: {"type": "ping"} for keepalive
-    - Server sends JSON: {"type": "output", "data": "..."} for terminal output
-    - Server sends JSON: {"type": "error", "message": "..."} on errors
-    """
-
-    # --- Auth handshake ---
-    try:
-        raw = ws.receive(timeout=10)
-        if raw is None:
-            return
-        msg = json.loads(raw)
-        token = msg.get("token", "")
-        if msg.get("type") != "auth" or not session_tokens or not session_tokens.validate(token):
-            ws.send(json.dumps({"type": "error", "message": "unauthorized"}))
-            return
-    except Exception:
-        return
-
-    # --- Verify session exists ---
-    sessions = list_tmux_sessions()
-    if not any(s.name == session_name for s in sessions):
-        ws.send(json.dumps({"type": "error", "message": f"session '{session_name}' not found"}))
-        return
-
-    ws.send(json.dumps({"type": "connected", "session": session_name}))
-    caffeinate.acquire()
-
-    # Send scrollback history (last 500 lines with escape sequences for colors)
-    ws.send(json.dumps({"type": "loading", "message": "Loading history..."}))
-    r = subprocess.run(
-        ["tmux", "capture-pane", "-t", session_name, "-p", "-e", "-S", "-500"],
-        capture_output=True, text=True,
-    )
-    if r.returncode == 0 and r.stdout:
-        clean = _STATUS_LINE_RE.sub("", r.stdout)
-        ws.send(json.dumps({"type": "output", "data": clean}))
-    ws.send(json.dumps({"type": "loaded"}))
-
-
-    # Create a FIFO for pipe-pane output (new output only, going forward)
-    fifo_dir = tempfile.mkdtemp(prefix="pieterm-")
-    fifo_path = os.path.join(fifo_dir, "pane.fifo")
-    os.mkfifo(fifo_path)
-
-    # Start pipe-pane: tmux streams pane output to our FIFO
-    subprocess.run(
-        ["tmux", "pipe-pane", "-t", session_name, f"cat > {fifo_path}"],
-        capture_output=True,
-    )
-
-    print(f"[Terminal] pipe-pane connected to '{session_name}'", file=sys.stderr)
-
-    stop = threading.Event()
-
-    def _read_fifo():
-        """Read pane output from FIFO and send to WebSocket."""
-        try:
-            fd = os.open(fifo_path, os.O_RDONLY | os.O_NONBLOCK)
-            while not stop.is_set():
-                r, _, _ = select.select([fd], [], [], 1.0)
-                if r:
-                    data = os.read(fd, 4096)
-                    if data:
-                        text = data.decode("utf-8", errors="replace")
-                        clean = _STATUS_LINE_RE.sub("", text)
-                        if clean:
-                            ws.send(json.dumps({
-                                "type": "output",
-                                "data": clean,
-                            }))
-        except Exception as e:
-            if not stop.is_set():
-                print(f"[Terminal] fifo reader error: {e}", file=sys.stderr)
-        finally:
-            try:
-                os.close(fd)
-            except Exception:
-                pass
-            stop.set()
-
-    reader = threading.Thread(target=_read_fifo, daemon=True)
-    reader.start()
-
-    try:
-        while not stop.is_set():
-            raw = ws.receive(timeout=5)
-            if raw is None:
-                print("[Terminal] WebSocket closed by client", file=sys.stderr)
-                break
-            try:
-                msg = json.loads(raw)
-            except (json.JSONDecodeError, TypeError):
-                continue
-
-            msg_type = msg.get("type")
-
-            if msg_type == "ping":
-                continue
-
-            elif msg_type == "input":
-                data = msg.get("data", "")
-                if data:
-                    _send_tmux_keys(session_name, data)
-
-
-    except Exception as e:
-        print(f"[Terminal] WebSocket error: {e}", file=sys.stderr)
-    finally:
-        stop.set()
-        caffeinate.release()
-        # Stop pipe-pane
-        subprocess.run(
-            ["tmux", "pipe-pane", "-t", session_name],
-            capture_output=True,
+        proc = subprocess.Popen(
+            [
+                "ttyd",
+                "--port", str(port),
+                "--interface", "127.0.0.1",  # localhost only — Flask proxies
+                "--writable",
+                "--once",  # exit after client disconnects
+                "tmux", "attach-session", "-t", session_name,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
-        # Clean up FIFO
-        try:
-            os.unlink(fifo_path)
-            os.rmdir(fifo_dir)
-        except OSError:
-            pass
-        print(f"[Terminal] Disconnected from '{session_name}'", file=sys.stderr)
+        _ttyd_instances[session_name] = {"proc": proc, "port": port}
+        print(f"[Terminal] ttyd started for '{session_name}' on port {port} (pid={proc.pid})",
+              file=sys.stderr)
+        return port
+
+
+def stop_ttyd(session_name: str) -> None:
+    """Stop the ttyd process for a session."""
+    with _ttyd_lock:
+        inst = _ttyd_instances.pop(session_name, None)
+    if inst and inst["proc"].poll() is None:
+        inst["proc"].terminate()
+        print(f"[Terminal] ttyd stopped for '{session_name}'", file=sys.stderr)
+
+
+def stop_all_ttyd() -> None:
+    """Stop all ttyd processes."""
+    with _ttyd_lock:
+        for name, inst in _ttyd_instances.items():
+            if inst["proc"].poll() is None:
+                inst["proc"].terminate()
+        _ttyd_instances.clear()

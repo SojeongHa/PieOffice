@@ -1,5 +1,5 @@
 // frontend/js/terminal-client.js
-// Slack-style terminal client with mTLS + auto session token
+// Terminal client — connects to ttyd instances managed by the terminal server
 
 (function () {
   "use strict";
@@ -7,13 +7,10 @@
   var SYNC_INTERVAL = 5000;
 
   var token = "";
-  var ws = null;
-  var term = null;
-  var fitAddon = null;
   var currentSession = null;
-  var reconnectTimeout = null;
   var syncTimer = null;
   var lastSessionsJson = "";
+  var currentTtydPort = null;
 
   // ── Auto-init: acquire session token (mTLS handles device auth) ───
 
@@ -50,7 +47,6 @@
       headers: { Authorization: "Bearer " + token },
     }).then(function (r) {
       if (r.status === 401) {
-        // Token expired — re-acquire
         acquireSessionToken();
         return null;
       }
@@ -143,7 +139,6 @@
     var toggle = document.getElementById("sidebar-toggle");
     sidebar.classList.toggle("open");
     overlay.classList.toggle("open");
-    // Hide hamburger button when sidebar is open
     toggle.style.display = sidebar.classList.contains("open") ? "none" : "flex";
   };
 
@@ -153,13 +148,12 @@
     document.getElementById("sidebar-toggle").style.display = "";
   }
 
-  // ── Terminal Connection ────────────────────────────────
+  // ── Terminal Connection (via ttyd) ─────────────────────
 
   function connectSession(sessionName) {
-    if (ws) ws.close();
-    if (reconnectTimeout) {
-      clearTimeout(reconnectTimeout);
-      reconnectTimeout = null;
+    // Disconnect previous
+    if (currentSession && currentSession !== sessionName) {
+      doDisconnect(currentSession);
     }
     currentSession = sessionName;
 
@@ -172,156 +166,89 @@
     document.getElementById("session-title").textContent = sessionName;
     setStatus("connecting", "Connecting...");
 
-    // Hide empty state, show terminal + quick actions
     document.getElementById("empty-state").style.display = "none";
     document.getElementById("quick-actions").style.display = "flex";
-    var termContainer = document.getElementById("terminal-container");
-    termContainer.style.display = "block";
-    termContainer.innerHTML = "";
 
-    term = new Terminal({
-      cursorBlink: true,
-      fontSize: 13,
-      fontFamily: '"Menlo", "Courier New", monospace',
-      scrollback: 5000,
-      scrollSensitivity: 3,
-      theme: {
-        background: "#1a1a2e",
-        foreground: "#D1D2D3",
-        cursor: "#E8D44D",
-        selectionBackground: "rgba(81,54,131,0.5)",
-        black: "#1a1a2e",
-        brightBlack: "#696969",
-      },
-      allowProposedApi: true,
-    });
-
-    fitAddon = new FitAddon.FitAddon();
-    term.loadAddon(fitAddon);
-    term.loadAddon(new WebLinksAddon.WebLinksAddon());
-    term.open(termContainer);
-
-    new ResizeObserver(function () { fitAddon.fit(); }).observe(termContainer);
-
-    // iOS keyboard: visualViewport shrinks but layout viewport doesn't.
-    // Resize the entire layout to fit above the keyboard.
-    if (window.visualViewport) {
-      var onVVResize = function () {
-        var layout = document.getElementById("main-layout");
-        if (layout) layout.style.height = window.visualViewport.height + "px";
-      };
-      window.visualViewport.addEventListener("resize", onVVResize);
-      window.visualViewport.addEventListener("scroll", onVVResize);
-    }
-
-    var wsProto = location.protocol === "https:" ? "wss" : "ws";
-    ws = new WebSocket(wsProto + "://" + location.host + "/ws/" + sessionName);
-
-    var pingInterval = null;
-
-    ws.onopen = function () {
-      ws.send(JSON.stringify({ type: "auth", token: token }));
-      // Keep connection alive — Safari/iOS kills idle WebSockets after ~5s
-      pingInterval = setInterval(function () {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "ping" }));
+    // Ask server to start ttyd for this session
+    fetch(location.origin + "/connect/" + sessionName, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token },
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) {
+          setStatus("disconnected", data.error);
+          return;
         }
-      }, 3000);
-    };
-
-    ws.onmessage = function (event) {
-      var msg = JSON.parse(event.data);
-      if (msg.type === "connected") {
-        setStatus("connected", "Loading...");
-        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
-      } else if (msg.type === "loading") {
-        setStatus("connecting", msg.message || "Loading...");
-      } else if (msg.type === "loaded") {
+        currentTtydPort = data.port;
+        // Load ttyd in iframe — ttyd serves its own xterm.js
+        var container = document.getElementById("terminal-container");
+        container.style.display = "block";
+        container.innerHTML = "";
+        var iframe = document.createElement("iframe");
+        iframe.id = "ttyd-frame";
+        iframe.src = "http://127.0.0.1:" + data.port;
+        iframe.style.cssText = "width:100%;height:100%;border:none;";
+        container.appendChild(iframe);
         setStatus("connected", "Connected");
-        if (term) term.scrollToBottom();
-      } else if (msg.type === "output") {
-        term.write(msg.data);
-        term.scrollToBottom();
-      } else if (msg.type === "error") {
-        setStatus("disconnected", msg.message);
-        term.write("\r\n\x1b[31m" + msg.message + "\x1b[0m\r\n");
-        if (msg.message === "unauthorized") {
-          // Session token expired — re-acquire and retry
-          acquireSessionToken();
-        }
-      }
-    };
-
-    ws.onclose = function () {
-      if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
-      setStatus("disconnected", "Disconnected");
-      scheduleReconnect(sessionName);
-    };
-
-    ws.onerror = function () {
-      setStatus("disconnected", "Error");
-    };
-
-    term.onData(function (data) {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "input", data: data }));
-      }
-    });
-
-    term.onResize(function (size) {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "resize", cols: size.cols, rows: size.rows }));
-      }
-    });
+      })
+      .catch(function () {
+        setStatus("disconnected", "Connection failed");
+      });
   }
 
   // ── Disconnect ─────────────────────────────────────────
 
+  function doDisconnect(sessionName) {
+    fetch(location.origin + "/disconnect/" + sessionName, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token },
+    }).catch(function () {});
+    currentTtydPort = null;
+  }
+
   window.disconnectSession = function () {
-    if (reconnectTimeout) {
-      clearTimeout(reconnectTimeout);
-      reconnectTimeout = null;
+    if (currentSession) {
+      doDisconnect(currentSession);
     }
-    var sessionToRestore = currentSession;
     currentSession = null;
 
-    if (ws) {
-      ws.close();
-      ws = null;
-    }
-    if (term) {
-      term.dispose();
-      term = null;
-      fitAddon = null;
-    }
-
-    // Hide terminal + quick actions, show empty state
     document.getElementById("terminal-header").style.display = "none";
     document.getElementById("terminal-container").style.display = "none";
     document.getElementById("terminal-container").innerHTML = "";
     document.getElementById("quick-actions").style.display = "none";
     document.getElementById("empty-state").style.display = "flex";
-    // Reset layout height
     document.getElementById("main-layout").style.height = "";
 
-    // Re-render session list to remove active state
     if (lastSessionsJson) {
       renderSessionList(JSON.parse(lastSessionsJson));
     }
-
   };
-
 
   // ── Quick Actions ───────────────────────────────────────
 
   window.sendQuick = function (data) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "input", data: data }));
+    // Send keystrokes to ttyd via its iframe
+    var iframe = document.getElementById("ttyd-frame");
+    if (iframe && iframe.contentWindow) {
+      // ttyd uses its own WebSocket; we can post a message or
+      // directly interact. Simplest: focus iframe and use keyboard events.
+      iframe.focus();
+      // For quick actions, use tmux send-keys as fallback
+      fetch(location.origin + "/send-keys/" + currentSession, {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ keys: data }),
+      }).catch(function () {});
     }
   };
 
   window.scrollBottom = function () {
-    if (term) term.scrollToBottom();
+    var iframe = document.getElementById("ttyd-frame");
+    if (iframe) iframe.focus();
   };
 
   function setStatus(state, text) {
@@ -329,14 +256,5 @@
     var label = document.getElementById("status-text");
     if (dot) dot.className = "status-dot " + state;
     if (label) label.textContent = text;
-  }
-
-  function scheduleReconnect(sessionName) {
-    if (reconnectTimeout) clearTimeout(reconnectTimeout);
-    // Only auto-reconnect if still the active session (not manually disconnected)
-    if (!currentSession) return;
-    reconnectTimeout = setTimeout(function () {
-      if (currentSession === sessionName) connectSession(sessionName);
-    }, 3000);
   }
 })();

@@ -6,7 +6,6 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Pie Office Terminal</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css" />
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -216,8 +215,6 @@
     #disconnect-btn:hover { color: var(--red); border-color: var(--red); }
 
     #terminal-container { flex: 1; overflow: hidden; }
-    /* Enable native touch scrolling inside xterm.js viewport */
-    .xterm-viewport { -webkit-overflow-scrolling: touch; }
 
     /* Quick action bar */
     #quick-actions {
@@ -338,9 +335,6 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.min.js"></script>
   <script src="/static/js/terminal-client.js"></script>
 </body>
 </html>

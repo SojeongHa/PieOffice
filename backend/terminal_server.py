@@ -13,12 +13,19 @@ import ssl
 import sys
 import threading
 
+import subprocess
+
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
-from flask_sock import Sock
 
 import config as terminal_config
-from terminal import handle_terminal_ws, list_tmux_sessions
+from terminal import (
+    caffeinate,
+    get_or_start_ttyd,
+    list_tmux_sessions,
+    stop_all_ttyd,
+    stop_ttyd,
+)
 from terminal_auth import SessionTokenStore
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -29,7 +36,6 @@ TERMINAL_PORT = int(os.environ.get("TERMINAL_PORT", 10316))
 # ---------------------------------------------------------------------------
 terminal_app = Flask(__name__, static_folder=None)
 CORS(terminal_app)
-sock = Sock(terminal_app)
 session_tokens = SessionTokenStore(ttl=terminal_config.TERMINAL_SESSION_TOKEN_TTL)
 
 
@@ -96,11 +102,48 @@ def terminal_sessions():
     })
 
 
-@sock.route("/ws/<session_name>")
-def terminal_ws(ws, session_name):
-    """WebSocket endpoint for terminal I/O relay."""
-    handle_terminal_ws(ws, session_name, session_tokens)
+@terminal_app.route("/connect/<session_name>", methods=["POST"])
+def connect_session(session_name):
+    """Start a ttyd instance for the given tmux session, return its port."""
+    auth = request.headers.get("Authorization", "")
+    token = auth.removeprefix("Bearer ").strip()
+    if not session_tokens.validate(token):
+        return jsonify({"error": "unauthorized"}), 401
+    port = get_or_start_ttyd(session_name)
+    if port is None:
+        return jsonify({"error": "failed to start terminal"}), 500
+    caffeinate.acquire()
+    return jsonify({"port": port})
 
+
+@terminal_app.route("/disconnect/<session_name>", methods=["POST"])
+def disconnect_session(session_name):
+    """Stop the ttyd instance for the given session."""
+    auth = request.headers.get("Authorization", "")
+    token = auth.removeprefix("Bearer ").strip()
+    if not session_tokens.validate(token):
+        return jsonify({"error": "unauthorized"}), 401
+    stop_ttyd(session_name)
+    caffeinate.release()
+    return jsonify({"ok": True})
+
+
+
+@terminal_app.route("/send-keys/<session_name>", methods=["POST"])
+def send_keys(session_name):
+    """Send keystrokes to tmux session (for quick action buttons)."""
+    auth = request.headers.get("Authorization", "")
+    token = auth.removeprefix("Bearer ").strip()
+    if not session_tokens.validate(token):
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    keys = data.get("keys", "")
+    if keys:
+        subprocess.run(
+            ["tmux", "send-keys", "-t", session_name, "-l", keys],
+            capture_output=True, timeout=2,
+        )
+    return jsonify({"ok": True})
 
 
 @terminal_app.route("/health")
