@@ -288,10 +288,9 @@
     var container = document.getElementById("terminal-container");
     if (!container || !container.contains(e.target)) return;
     var dy = touchStartY - e.touches[0].clientY;
-    if (Math.abs(dy) > 15) {
-      // Send Up or Down arrow keys to tmux scroll mode
-      var key = dy > 0 ? "\x1b[B" : "\x1b[A"; // Down : Up (natural scrolling)
-      var lines = Math.floor(Math.abs(dy) / 15);
+    if (Math.abs(dy) > 5) {
+      var key = dy > 0 ? "\x1b[B" : "\x1b[A";
+      var lines = Math.floor(Math.abs(dy) / 5);
       for (var i = 0; i < lines; i++) window._termSend(key);
       touchStartY = e.touches[0].clientY;
       e.preventDefault();
