@@ -130,9 +130,9 @@ def restore_size():
     data = request.get_json(force=True, silent=True) or {}
     session = data.get("session", "")
     if session:
-        # Kill the web-* grouped session so tmux resizes back to laptop
+        # Force tmux to resize back to the laptop client's terminal size
         import subprocess as sp
-        sp.run(["tmux", "run-shell", "-t", session, "true"], capture_output=True, timeout=2)
+        sp.run(["tmux", "resize-window", "-A", "-t", session], capture_output=True, timeout=2)
     return jsonify({"ok": True})
 
 
