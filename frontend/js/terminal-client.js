@@ -256,17 +256,47 @@
     input.focus();
   };
 
-  window._termScrollUp = function () {
-    // Send tmux scroll: Ctrl+B [ then Page Up
-    window._termSend("\x02[");
-    setTimeout(function () { window._termSend("\x1b[5~"); }, 100);
+  var scrollMode = false;
+  var touchStartY = 0;
+
+  window._termToggleScroll = function () {
+    var btn = document.getElementById("btn-scroll-mode");
+    if (!scrollMode) {
+      // Enter tmux scroll mode
+      window._termSend("\x02[");
+      scrollMode = true;
+      btn.textContent = "Exit Scroll";
+      btn.style.background = "var(--bg-sidebar-active)";
+      btn.style.color = "#fff";
+    } else {
+      // Exit tmux scroll mode
+      window._termSend("q");
+      scrollMode = false;
+      btn.textContent = "Scroll";
+      btn.style.background = "";
+      btn.style.color = "";
+    }
   };
 
-  window._termScrollDown = function () {
-    // Send tmux scroll: Ctrl+B [ then Page Down, then q to exit
-    window._termSend("\x02[");
-    setTimeout(function () { window._termSend("\x1b[6~"); }, 100);
-  };
+  // Touch scroll when in scroll mode — send arrow keys to tmux
+  document.addEventListener("touchstart", function (e) {
+    if (scrollMode) touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  document.addEventListener("touchmove", function (e) {
+    if (!scrollMode) return;
+    var container = document.getElementById("terminal-container");
+    if (!container || !container.contains(e.target)) return;
+    var dy = touchStartY - e.touches[0].clientY;
+    if (Math.abs(dy) > 15) {
+      // Send Up or Down arrow keys to tmux scroll mode
+      var key = dy > 0 ? "\x1b[A" : "\x1b[B"; // Up : Down
+      var lines = Math.floor(Math.abs(dy) / 15);
+      for (var i = 0; i < lines; i++) window._termSend(key);
+      touchStartY = e.touches[0].clientY;
+      e.preventDefault();
+    }
+  }, { passive: false });
 
   document.getElementById("term-input").addEventListener("keydown", function (e) {
     if (e.key === "Enter") {
