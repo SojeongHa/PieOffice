@@ -167,6 +167,33 @@
 
     new ResizeObserver(function () { fitAddon.fit(); }).observe(termContainer);
 
+    // Force touch scrolling — xterm.js blocks touch events for selection.
+    // We capture touchmove at the document level during the capture phase
+    // and scroll the terminal instead.
+    (function () {
+      var startY = 0;
+      var scrolling = false;
+      termContainer.addEventListener("touchstart", function (e) {
+        startY = e.touches[0].clientY;
+        scrolling = false;
+      }, true);
+      termContainer.addEventListener("touchmove", function (e) {
+        var dy = startY - e.touches[0].clientY;
+        if (Math.abs(dy) > 5) {
+          scrolling = true;
+          e.preventDefault();
+          e.stopPropagation();
+          term.scrollLines(dy > 0 ? 2 : -2);
+          startY = e.touches[0].clientY;
+        }
+      }, { capture: true, passive: false });
+      termContainer.addEventListener("touchend", function (e) {
+        if (scrolling) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }, true);
+    })();
 
 
     // WebSocket to asyncio terminal server
