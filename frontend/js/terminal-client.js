@@ -250,18 +250,22 @@
     if (!input) return;
     var text = input.value;
     if (text) {
-      window._termSend(text + "\n");
+      window._termSend(text + "\r");
     }
     input.value = "";
     input.focus();
   };
 
   window._termScrollUp = function () {
-    if (term) term.scrollLines(-10);
+    // Send tmux scroll: Ctrl+B [ then Page Up
+    window._termSend("\x02[");
+    setTimeout(function () { window._termSend("\x1b[5~"); }, 100);
   };
 
   window._termScrollDown = function () {
-    if (term) term.scrollToBottom();
+    // Send tmux scroll: Ctrl+B [ then Page Down, then q to exit
+    window._termSend("\x02[");
+    setTimeout(function () { window._termSend("\x1b[6~"); }, 100);
   };
 
   document.getElementById("term-input").addEventListener("keydown", function (e) {
