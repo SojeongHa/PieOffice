@@ -214,11 +214,13 @@
 
     #terminal-container { flex: 1; overflow: hidden; }
 
-    #office-frame {
+    #empty-state {
       flex: 1;
-      border: none;
-      width: 100%;
-      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 15px;
     }
 
     /* Mobile: sidebar as slide-out drawer */
@@ -293,7 +295,7 @@
         </div>
         <button id="disconnect-btn" onclick="disconnectSession()">Disconnect</button>
       </div>
-      <iframe id="office-frame" src="/office"></iframe>
+      <div id="empty-state">Select a session from the sidebar</div>
       <div id="terminal-container"></div>
     </div>
   </div>

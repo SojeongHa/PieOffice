@@ -43,23 +43,6 @@ def static_files(filename):
     return send_from_directory(os.path.join(PROJECT_ROOT, "frontend"), filename)
 
 
-# Serve Pie Office frontend assets for the embedded office view
-@terminal_app.route("/office")
-def office_page():
-    return send_from_directory(os.path.join(PROJECT_ROOT, "frontend"), "index.html")
-
-
-@terminal_app.route("/office/static/<path:filename>")
-def office_static(filename):
-    return send_from_directory(os.path.join(PROJECT_ROOT, "frontend"), filename)
-
-
-@terminal_app.route("/office/theme/<path:filename>")
-def office_theme(filename):
-    theme_dir = os.path.join(PROJECT_ROOT, "theme", "default")
-    return send_from_directory(theme_dir, filename)
-
-
 def _get_peer_cert():
     """Extract peer certificate from the current request's SSL socket.
     werkzeug doesn't expose this via WSGI environ, so we dig into the socket."""

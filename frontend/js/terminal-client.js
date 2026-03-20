@@ -173,7 +173,7 @@
     setStatus("connecting", "Connecting...");
 
     // Hide office, show terminal
-    document.getElementById("office-frame").style.display = "none";
+    document.getElementById("empty-state").style.display = "none";
     var termContainer = document.getElementById("terminal-container");
     termContainer.style.display = "block";
     termContainer.innerHTML = "";
@@ -287,7 +287,7 @@
     document.getElementById("terminal-header").style.display = "none";
     document.getElementById("terminal-container").style.display = "none";
     document.getElementById("terminal-container").innerHTML = "";
-    document.getElementById("office-frame").style.display = "block";
+    document.getElementById("empty-state").style.display = "block";
 
     // Re-render session list to remove active state
     if (lastSessionsJson) {
