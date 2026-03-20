@@ -167,32 +167,40 @@
 
     new ResizeObserver(function () { fitAddon.fit(); }).observe(termContainer);
 
-    // Force touch scrolling — xterm.js blocks touch events for selection.
-    // We capture touchmove at the document level during the capture phase
-    // and scroll the terminal instead.
+    // Force touch scrolling — capture at document level before xterm gets it.
+    // Only activate when touch is inside the terminal container.
     (function () {
       var startY = 0;
       var scrolling = false;
-      termContainer.addEventListener("touchstart", function (e) {
-        startY = e.touches[0].clientY;
-        scrolling = false;
-      }, true);
-      termContainer.addEventListener("touchmove", function (e) {
+      var inTerminal = false;
+
+      document.addEventListener("touchstart", function (e) {
+        inTerminal = termContainer.contains(e.target);
+        if (inTerminal) {
+          startY = e.touches[0].clientY;
+          scrolling = false;
+        }
+      }, { capture: true, passive: true });
+
+      document.addEventListener("touchmove", function (e) {
+        if (!inTerminal || !term) return;
         var dy = startY - e.touches[0].clientY;
-        if (Math.abs(dy) > 5) {
+        if (Math.abs(dy) > 3) {
           scrolling = true;
           e.preventDefault();
-          e.stopPropagation();
+          e.stopImmediatePropagation();
           term.scrollLines(dy > 0 ? 2 : -2);
           startY = e.touches[0].clientY;
         }
       }, { capture: true, passive: false });
-      termContainer.addEventListener("touchend", function (e) {
-        if (scrolling) {
-          e.preventDefault();
-          e.stopPropagation();
+
+      document.addEventListener("touchend", function (e) {
+        if (scrolling && inTerminal) {
+          e.stopImmediatePropagation();
         }
-      }, true);
+        scrolling = false;
+        inTerminal = false;
+      }, { capture: true, passive: true });
     })();
 
 
