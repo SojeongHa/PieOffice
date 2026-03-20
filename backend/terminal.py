@@ -177,13 +177,6 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     # This avoids pty.openpty()/pty.fork() which segfault in threaded Flask.
     web_session = f"web-{threading.current_thread().ident}"
 
-    # Set window-size to 'largest' so phone's small screen doesn't shrink laptop's view.
-    # Each client renders at its own size independently.
-    subprocess.run(
-        ["tmux", "set-option", "-g", "window-size", "largest"],
-        capture_output=True,
-    )
-
     proc = subprocess.Popen(
         ["script", "-q", "/dev/null",
          "tmux", "new-session", "-t", session_name, "-s", web_session],
