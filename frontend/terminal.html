@@ -220,26 +220,57 @@
     /* Quick action bar */
     #quick-actions {
       display: flex;
-      gap: 6px;
-      padding: 6px 12px;
+      flex-direction: column;
+      gap: 4px;
+      padding: 6px 8px;
       background: var(--bg-header);
       border-top: 1px solid var(--border);
-      overflow-x: auto;
       flex-shrink: 0;
     }
-    #quick-actions button {
+    #input-bar {
+      display: flex;
+      gap: 6px;
+    }
+    #input-bar input {
+      flex: 1;
       background: var(--bg-sidebar);
       color: var(--text-primary);
       border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 8px 14px;
-      font-family: monospace;
+      padding: 8px 12px;
       font-size: 14px;
+      font-family: monospace;
+      outline: none;
+    }
+    #input-bar input:focus { border-color: var(--bg-sidebar-active); }
+    #input-bar button {
+      background: var(--bg-sidebar-active);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-size: 14px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    #action-buttons {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+    }
+    #action-buttons button {
+      background: var(--bg-sidebar);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-family: monospace;
+      font-size: 13px;
       cursor: pointer;
       white-space: nowrap;
       flex-shrink: 0;
     }
-    #quick-actions button:active { background: var(--bg-sidebar-active); color: #fff; }
+    #action-buttons button:active { background: var(--bg-sidebar-active); color: #fff; }
 
     #empty-state {
       flex: 1;
@@ -325,13 +356,19 @@
       <div id="empty-state">Select a session from the sidebar</div>
       <div id="terminal-container"></div>
       <div id="quick-actions" style="display:none;">
-        <button onclick="sendQuick('1\n')">1</button>
-        <button onclick="sendQuick('2\n')">2</button>
-        <button onclick="sendQuick('3\n')">3</button>
-        <button onclick="sendQuick('y\n')">y</button>
-        <button onclick="sendQuick('n\n')">n</button>
-        <button onclick="sendQuick('\n')">Enter</button>
-        <button onclick="scrollBottom()">&#8595;</button>
+        <div id="input-bar">
+          <input type="text" id="term-input" placeholder="Type here (Korean OK)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+          <button onclick="sendInput()">Send</button>
+        </div>
+        <div id="action-buttons">
+          <button onclick="sendQuick('1\n')">1</button>
+          <button onclick="sendQuick('2\n')">2</button>
+          <button onclick="sendQuick('3\n')">3</button>
+          <button onclick="sendQuick('y\n')">y</button>
+          <button onclick="sendQuick('n\n')">n</button>
+          <button onclick="sendQuick('\n')">Enter</button>
+          <button onclick="scrollBottom()">&#8595;</button>
+        </div>
       </div>
     </div>
   </div>

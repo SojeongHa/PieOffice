@@ -167,21 +167,25 @@
 
     new ResizeObserver(function () { fitAddon.fit(); }).observe(termContainer);
 
-    // Touch scrolling for iOS — xterm.js captures touch for selection,
-    // convert vertical swipes to scroll instead
-    var touchStartY = null;
-    termContainer.addEventListener("touchstart", function (e) {
-      if (e.touches.length === 1) touchStartY = e.touches[0].clientY;
-    }, { passive: true });
-    termContainer.addEventListener("touchmove", function (e) {
-      if (touchStartY === null || e.touches.length !== 1) return;
-      var dy = touchStartY - e.touches[0].clientY;
-      var lines = Math.round(dy / 20);
-      if (lines !== 0) {
-        term.scrollLines(lines);
-        touchStartY = e.touches[0].clientY;
-      }
-    }, { passive: true });
+    // Touch scrolling for iOS — intercept on the xterm screen element
+    // which is where xterm.js captures touch events for selection
+    setTimeout(function () {
+      var screen = termContainer.querySelector(".xterm-screen");
+      if (!screen) return;
+      var touchStartY = null;
+      screen.addEventListener("touchstart", function (e) {
+        if (e.touches.length === 1) touchStartY = e.touches[0].clientY;
+      }, { passive: true });
+      screen.addEventListener("touchmove", function (e) {
+        if (touchStartY === null || e.touches.length !== 1) return;
+        var dy = touchStartY - e.touches[0].clientY;
+        var lines = Math.round(dy / 15);
+        if (lines !== 0) {
+          term.scrollLines(lines);
+          touchStartY = e.touches[0].clientY;
+        }
+      }, { passive: false });
+    }, 500);
 
     // iOS keyboard
     if (window.visualViewport) {
@@ -270,6 +274,25 @@
       ws.send(JSON.stringify({ type: "input", data: data }));
     }
   };
+
+  window.sendInput = function () {
+    var input = document.getElementById("term-input");
+    if (!input) return;
+    var text = input.value;
+    if (text && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "input", data: text + "\n" }));
+    }
+    input.value = "";
+    input.focus();
+  };
+
+  // Enter key in input field sends text
+  document.addEventListener("keydown", function (e) {
+    if (e.target && e.target.id === "term-input" && e.key === "Enter") {
+      e.preventDefault();
+      sendInput();
+    }
+  });
 
   window.scrollBottom = function () {
     if (term) term.scrollToBottom();
