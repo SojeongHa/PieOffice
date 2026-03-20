@@ -249,7 +249,7 @@
     if (!input) return;
     var text = input.value;
     if (text && ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "input", data: text + "\r" }));
+      ws.send(JSON.stringify({ type: "input", data: text + "\n" }));
     }
     input.value = "";
     input.focus();
