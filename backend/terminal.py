@@ -313,12 +313,21 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
             elif msg_type == "resize":
                 cols = msg.get("cols", 80)
                 rows = msg.get("rows", 24)
-                # Resize tmux window to phone size (laptop shrinks temporarily)
-                subprocess.run(
-                    ["tmux", "resize-window", "-t", session_name,
-                     "-x", str(cols), "-y", str(rows)],
-                    capture_output=True, timeout=2,
+                # Change the laptop client's reported size to phone size.
+                # tmux auto-resizes window based on client sizes.
+                # No resize-window call — avoids manual size lock.
+                r = subprocess.run(
+                    ["tmux", "list-clients", "-t", session_name,
+                     "-F", "#{client_tty}"],
+                    capture_output=True, text=True, timeout=2,
                 )
+                if r.returncode == 0:
+                    for tty in r.stdout.strip().splitlines():
+                        subprocess.run(
+                            ["tmux", "refresh-client", "-C",
+                             f"{cols},{rows}", "-t", tty],
+                            capture_output=True, timeout=2,
+                        )
 
     except Exception as e:
         print(f"[Terminal] WebSocket error: {e}", file=sys.stderr)
@@ -336,15 +345,16 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
             os.rmdir(fifo_dir)
         except OSError:
             pass
-        # Restore laptop size:
-        # 1. resize-window -A to fit to current client
-        # 2. Re-set window-size to 'smallest' to re-enable auto-resize
-        subprocess.run(
-            ["tmux", "resize-window", "-A", "-t", session_name],
-            capture_output=True,
+        # Restore laptop size: refresh-client without -C resets to actual
+        # terminal dimensions. tmux then auto-resizes the window.
+        r = subprocess.run(
+            ["tmux", "list-clients", "-t", session_name, "-F", "#{client_tty}"],
+            capture_output=True, text=True,
         )
-        subprocess.run(
-            ["tmux", "set-option", "-g", "window-size", "smallest"],
-            capture_output=True,
-        )
+        if r.returncode == 0:
+            for tty in r.stdout.strip().splitlines():
+                subprocess.run(
+                    ["tmux", "refresh-client", "-t", tty],
+                    capture_output=True,
+                )
         print(f"[Terminal] Disconnected from '{session_name}'", file=sys.stderr)
