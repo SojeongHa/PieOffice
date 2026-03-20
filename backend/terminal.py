@@ -1,25 +1,13 @@
-"""Web terminal: tmux session listing, WebSocket I/O relay, caffeinate."""
+"""Terminal utilities: tmux session listing and caffeinate manager."""
 
-import json
 import os
-import re
-import select
-import signal
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from dataclasses import dataclass
 
 from config import TERMINAL_IDLE_TIMEOUT
-
-# Filter out terminal status line sequences (DCS, OSC) that corrupt xterm.js.
-# Matches: ESC P ... ST, ESC ] ... ST, ESC ] ... BEL
-_STATUS_LINE_RE = re.compile(
-    r"(\x1bP[^\x1b]*(?:\x1b\\|\x07))"   # DCS ... ST
-    r"|(\x1b\][^\x07\x1b]*(?:\x07|\x1b\\))"  # OSC ... BEL/ST
-)
 
 
 # ---------------------------------------------------------------------------
@@ -139,67 +127,3 @@ class CaffeinateManager:
 
 # Singleton
 caffeinate = CaffeinateManager()
-
-
-# ---------------------------------------------------------------------------
-# ttyd process manager — one ttyd instance per tmux session
-# ---------------------------------------------------------------------------
-
-# Active ttyd instances: session_name → {"proc": Popen, "port": int}
-_ttyd_instances: dict[str, dict] = {}
-_ttyd_lock = threading.Lock()
-_TTYD_PORT_BASE = 17600  # ttyd ports: 17600, 17601, ...
-
-
-def get_or_start_ttyd(session_name: str) -> int | None:
-    """Start a ttyd process for a tmux session, return its port.
-    Reuses existing instance if already running."""
-    with _ttyd_lock:
-        if session_name in _ttyd_instances:
-            inst = _ttyd_instances[session_name]
-            if inst["proc"].poll() is None:
-                return inst["port"]
-            # Process died, clean up
-            del _ttyd_instances[session_name]
-
-        port = _TTYD_PORT_BASE + len(_ttyd_instances)
-        # Find an unused port
-        for p in range(_TTYD_PORT_BASE, _TTYD_PORT_BASE + 100):
-            if not any(i["port"] == p for i in _ttyd_instances.values()):
-                port = p
-                break
-
-        proc = subprocess.Popen(
-            [
-                "ttyd",
-                "--port", str(port),
-                "--interface", "127.0.0.1",  # localhost only — Flask proxies
-                "--writable",
-                "--once",  # exit after client disconnects
-                "tmux", "attach-session", "-t", session_name,
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        _ttyd_instances[session_name] = {"proc": proc, "port": port}
-        print(f"[Terminal] ttyd started for '{session_name}' on port {port} (pid={proc.pid})",
-              file=sys.stderr)
-        return port
-
-
-def stop_ttyd(session_name: str) -> None:
-    """Stop the ttyd process for a session."""
-    with _ttyd_lock:
-        inst = _ttyd_instances.pop(session_name, None)
-    if inst and inst["proc"].poll() is None:
-        inst["proc"].terminate()
-        print(f"[Terminal] ttyd stopped for '{session_name}'", file=sys.stderr)
-
-
-def stop_all_ttyd() -> None:
-    """Stop all ttyd processes."""
-    with _ttyd_lock:
-        for name, inst in _ttyd_instances.items():
-            if inst["proc"].poll() is None:
-                inst["proc"].terminate()
-        _ttyd_instances.clear()

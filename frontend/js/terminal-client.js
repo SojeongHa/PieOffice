@@ -1,5 +1,5 @@
 // frontend/js/terminal-client.js
-// Terminal client — connects to ttyd instances managed by the terminal server
+// Terminal client — connects to asyncio terminal server via WebSocket
 
 (function () {
   "use strict";
@@ -7,22 +7,22 @@
   var SYNC_INTERVAL = 5000;
 
   var token = "";
+  var ws = null;
+  var term = null;
+  var fitAddon = null;
   var currentSession = null;
+  var reconnectTimeout = null;
   var syncTimer = null;
   var lastSessionsJson = "";
-  var currentTtydPort = null;
 
-  // ── Auto-init: acquire session token (mTLS handles device auth) ───
+  // ── Auto-init ─────────────────────────────────────────
 
   acquireSessionToken();
 
   function acquireSessionToken() {
     fetch(location.origin + "/session-token", { method: "POST" })
       .then(function (r) {
-        if (!r.ok) {
-          showError("Device not authorized. Install client certificate.");
-          return null;
-        }
+        if (!r.ok) { showError("Device not authorized."); return null; }
         return r.json();
       })
       .then(function (data) {
@@ -30,9 +30,7 @@
         token = data.token;
         fetchSessionsAndShow();
       })
-      .catch(function () {
-        showError("Connection failed. Is the server running?");
-      });
+      .catch(function () { showError("Connection failed."); });
   }
 
   function showError(msg) {
@@ -40,16 +38,13 @@
     if (el) el.textContent = msg;
   }
 
-  // ── Session List (auto-sync) ──────────────────────────
+  // ── Session List ──────────────────────────────────────
 
   function fetchSessions() {
     return fetch(location.origin + "/sessions", {
       headers: { Authorization: "Bearer " + token },
     }).then(function (r) {
-      if (r.status === 401) {
-        acquireSessionToken();
-        return null;
-      }
+      if (r.status === 401) { acquireSessionToken(); return null; }
       return r.json();
     });
   }
@@ -57,7 +52,6 @@
   function fetchSessionsAndShow() {
     var dot = document.getElementById("sync-dot");
     if (dot) dot.classList.add("syncing");
-
     fetchSessions()
       .then(function (data) {
         if (!data) return;
@@ -65,12 +59,8 @@
         renderSessionList(data.sessions);
         startAutoSync();
       })
-      .catch(function () {
-        showError("Connection failed");
-      })
-      .finally(function () {
-        if (dot) dot.classList.remove("syncing");
-      });
+      .catch(function () { showError("Connection failed"); })
+      .finally(function () { if (dot) dot.classList.remove("syncing"); });
   }
 
   function startAutoSync() {
@@ -78,18 +68,13 @@
     syncTimer = setInterval(function () {
       var dot = document.getElementById("sync-dot");
       if (dot) dot.classList.add("syncing");
-
       fetchSessions()
         .then(function (data) {
           if (!data) return;
           var json = JSON.stringify(data.sessions);
-          if (json !== lastSessionsJson) {
-            renderSessionList(data.sessions);
-          }
+          if (json !== lastSessionsJson) renderSessionList(data.sessions);
         })
-        .finally(function () {
-          if (dot) dot.classList.remove("syncing");
-        });
+        .finally(function () { if (dot) dot.classList.remove("syncing"); });
     }, SYNC_INTERVAL);
   }
 
@@ -102,25 +87,17 @@
     lastSessionsJson = JSON.stringify(sessions);
     var list = document.getElementById("session-list");
     list.innerHTML = "";
-
     if (sessions.length === 0) {
-      list.innerHTML =
-        '<div class="no-sessions">No active sessions.<br>Start Claude with the tmux wrapper.</div>';
+      list.innerHTML = '<div class="no-sessions">No active sessions.<br>Start Claude with claude-tmux.</div>';
       return;
     }
-
     sessions.forEach(function (s) {
       var item = document.createElement("div");
       item.className = "session-item" + (s.name === currentSession ? " active" : "");
-      item.onclick = function () {
-        connectSession(s.name);
-        closeSidebarOnMobile();
-      };
-
+      item.onclick = function () { connectSession(s.name); closeSidebarOnMobile(); };
       var statusClass = s.attached > 0 ? "attached" : "detached";
       var shortCwd = s.cwd.replace(/^\/Users\/[^/]+\//, "~/");
       var projectName = shortCwd.split("/").pop() || s.name;
-
       item.innerHTML =
         '<span class="session-status ' + statusClass + '"></span>' +
         '<div class="session-info">' +
@@ -131,7 +108,7 @@
     });
   }
 
-  // ── Sidebar toggle (mobile) ───────────────────────────
+  // ── Sidebar ───────────────────────────────────────────
 
   window.toggleSidebar = function () {
     var sidebar = document.getElementById("sidebar");
@@ -148,70 +125,117 @@
     document.getElementById("sidebar-toggle").style.display = "";
   }
 
-  // ── Terminal Connection (via ttyd) ─────────────────────
+  // ── Terminal Connection ────────────────────────────────
 
   function connectSession(sessionName) {
-    // Disconnect previous
-    if (currentSession && currentSession !== sessionName) {
-      doDisconnect(currentSession);
-    }
+    if (ws) ws.close();
+    if (reconnectTimeout) { clearTimeout(reconnectTimeout); reconnectTimeout = null; }
     currentSession = sessionName;
+    if (lastSessionsJson) renderSessionList(JSON.parse(lastSessionsJson));
 
-    if (lastSessionsJson) {
-      renderSessionList(JSON.parse(lastSessionsJson));
-    }
-
-    var header = document.getElementById("terminal-header");
-    header.style.display = "flex";
+    document.getElementById("terminal-header").style.display = "flex";
     document.getElementById("session-title").textContent = sessionName;
     setStatus("connecting", "Connecting...");
 
     document.getElementById("empty-state").style.display = "none";
     document.getElementById("quick-actions").style.display = "flex";
+    var termContainer = document.getElementById("terminal-container");
+    termContainer.style.display = "block";
+    termContainer.innerHTML = "";
 
-    // Ask server to start ttyd for this session
-    fetch(location.origin + "/connect/" + sessionName, {
-      method: "POST",
-      headers: { Authorization: "Bearer " + token },
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        if (data.error) {
-          setStatus("disconnected", data.error);
-          return;
-        }
-        currentTtydPort = data.port;
-        // Load ttyd in iframe — ttyd serves its own xterm.js
-        var container = document.getElementById("terminal-container");
-        container.style.display = "block";
-        container.innerHTML = "";
-        var iframe = document.createElement("iframe");
-        iframe.id = "ttyd-frame";
-        iframe.src = "http://127.0.0.1:" + data.port;
-        iframe.style.cssText = "width:100%;height:100%;border:none;";
-        container.appendChild(iframe);
-        setStatus("connected", "Connected");
-      })
-      .catch(function () {
-        setStatus("disconnected", "Connection failed");
+    term = new Terminal({
+      cursorBlink: true,
+      fontSize: 13,
+      fontFamily: '"Menlo", "Courier New", monospace',
+      scrollback: 5000,
+      scrollSensitivity: 3,
+      theme: {
+        background: "#1a1a2e",
+        foreground: "#D1D2D3",
+        cursor: "#E8D44D",
+        selectionBackground: "rgba(81,54,131,0.5)",
+        black: "#1a1a2e",
+        brightBlack: "#696969",
+      },
+      allowProposedApi: true,
+    });
+
+    fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.loadAddon(new WebLinksAddon.WebLinksAddon());
+    term.open(termContainer);
+
+    new ResizeObserver(function () { fitAddon.fit(); }).observe(termContainer);
+
+    // iOS keyboard
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", function () {
+        var layout = document.getElementById("main-layout");
+        if (layout) layout.style.height = window.visualViewport.height + "px";
       });
+      window.visualViewport.addEventListener("scroll", function () {
+        var layout = document.getElementById("main-layout");
+        if (layout) layout.style.height = window.visualViewport.height + "px";
+      });
+    }
+
+    // WebSocket to asyncio terminal server
+    var wsProto = location.protocol === "https:" ? "wss" : "ws";
+    ws = new WebSocket(wsProto + "://" + location.host + "/ws/" + sessionName);
+
+    var pingInterval = null;
+
+    ws.onopen = function () {
+      ws.send(JSON.stringify({ type: "auth", token: token }));
+      pingInterval = setInterval(function () {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "ping" }));
+        }
+      }, 3000);
+    };
+
+    ws.onmessage = function (event) {
+      var msg = JSON.parse(event.data);
+      if (msg.type === "connected") {
+        setStatus("connected", "Connected");
+        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+      } else if (msg.type === "output") {
+        term.write(msg.data);
+        term.scrollToBottom();
+      } else if (msg.type === "error") {
+        setStatus("disconnected", msg.message);
+        if (msg.message === "unauthorized") acquireSessionToken();
+      }
+    };
+
+    ws.onclose = function () {
+      if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
+      setStatus("disconnected", "Disconnected");
+      scheduleReconnect(sessionName);
+    };
+
+    ws.onerror = function () { setStatus("disconnected", "Error"); };
+
+    term.onData(function (data) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "input", data: data }));
+      }
+    });
+
+    term.onResize(function (size) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "resize", cols: size.cols, rows: size.rows }));
+      }
+    });
   }
 
   // ── Disconnect ─────────────────────────────────────────
 
-  function doDisconnect(sessionName) {
-    fetch(location.origin + "/disconnect/" + sessionName, {
-      method: "POST",
-      headers: { Authorization: "Bearer " + token },
-    }).catch(function () {});
-    currentTtydPort = null;
-  }
-
   window.disconnectSession = function () {
-    if (currentSession) {
-      doDisconnect(currentSession);
-    }
+    if (reconnectTimeout) { clearTimeout(reconnectTimeout); reconnectTimeout = null; }
     currentSession = null;
+    if (ws) { ws.close(); ws = null; }
+    if (term) { term.dispose(); term = null; fitAddon = null; }
 
     document.getElementById("terminal-header").style.display = "none";
     document.getElementById("terminal-container").style.display = "none";
@@ -220,35 +244,19 @@
     document.getElementById("empty-state").style.display = "flex";
     document.getElementById("main-layout").style.height = "";
 
-    if (lastSessionsJson) {
-      renderSessionList(JSON.parse(lastSessionsJson));
-    }
+    if (lastSessionsJson) renderSessionList(JSON.parse(lastSessionsJson));
   };
 
-  // ── Quick Actions ───────────────────────────────────────
+  // ── Quick Actions ──────────────────────────────────────
 
   window.sendQuick = function (data) {
-    // Send keystrokes to ttyd via its iframe
-    var iframe = document.getElementById("ttyd-frame");
-    if (iframe && iframe.contentWindow) {
-      // ttyd uses its own WebSocket; we can post a message or
-      // directly interact. Simplest: focus iframe and use keyboard events.
-      iframe.focus();
-      // For quick actions, use tmux send-keys as fallback
-      fetch(location.origin + "/send-keys/" + currentSession, {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + token,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ keys: data }),
-      }).catch(function () {});
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "input", data: data }));
     }
   };
 
   window.scrollBottom = function () {
-    var iframe = document.getElementById("ttyd-frame");
-    if (iframe) iframe.focus();
+    if (term) term.scrollToBottom();
   };
 
   function setStatus(state, text) {
@@ -256,5 +264,13 @@
     var label = document.getElementById("status-text");
     if (dot) dot.className = "status-dot " + state;
     if (label) label.textContent = text;
+  }
+
+  function scheduleReconnect(sessionName) {
+    if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    if (!currentSession) return;
+    reconnectTimeout = setTimeout(function () {
+      if (currentSession === sessionName) connectSession(sessionName);
+    }, 3000);
   }
 })();

@@ -467,9 +467,20 @@ if __name__ == "__main__":
     socketserver.TCPServer.timeout = SOCKET_TIMEOUT
     WSGIRequestHandler.timeout = SOCKET_TIMEOUT
 
-    # Start terminal server on separate port if LAN mode enabled
+    # Start terminal server as separate process if LAN mode enabled
+    # Separate process = pty.fork() is safe (no Flask threads)
+    terminal_proc = None
     if terminal_config.TERMINAL_LAN_MODE:
-        from terminal_server import start_terminal_server_thread
-        start_terminal_server_thread()
+        import subprocess as sp
+        terminal_proc = sp.Popen(
+            [sys.executable, os.path.join(os.path.dirname(__file__), "terminal_server.py")],
+            env={**os.environ, "PYTHONPATH": os.path.dirname(__file__)},
+        )
+        print(f"[Terminal] Server started as subprocess (pid={terminal_proc.pid})",
+              file=sys.stderr)
 
-    app.run(host="127.0.0.1", port=PORT, threaded=True, debug=False)
+    try:
+        app.run(host="127.0.0.1", port=PORT, threaded=True, debug=False)
+    finally:
+        if terminal_proc:
+            terminal_proc.terminate()
