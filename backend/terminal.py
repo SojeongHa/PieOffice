@@ -235,16 +235,6 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     ws.send(json.dumps({"type": "connected", "session": session_name}))
     caffeinate.acquire()
 
-    # Send recent scrollback as plain text (no escape sequences = no width mismatch)
-    # -S -50 captures last 50 lines of scrollback + visible area
-    r = subprocess.run(
-        ["tmux", "capture-pane", "-t", session_name, "-p", "-S", "-50"],
-        capture_output=True, text=True,
-    )
-    if r.returncode == 0 and r.stdout:
-        # Trim to last ~2000 chars
-        text = r.stdout[-2000:] if len(r.stdout) > 2000 else r.stdout
-        ws.send(json.dumps({"type": "output", "data": text}))
 
     # Create a FIFO for pipe-pane output (new output only, going forward)
     fifo_dir = tempfile.mkdtemp(prefix="pieterm-")
@@ -311,24 +301,6 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
                 if data:
                     _send_tmux_keys(session_name, data)
 
-            elif msg_type == "resize":
-                cols = msg.get("cols", 80)
-                rows = msg.get("rows", 24)
-                # Change the laptop client's reported size to phone size.
-                # tmux auto-resizes window based on client sizes.
-                # No resize-window call — avoids manual size lock.
-                r = subprocess.run(
-                    ["tmux", "list-clients", "-t", session_name,
-                     "-F", "#{client_tty}"],
-                    capture_output=True, text=True, timeout=2,
-                )
-                if r.returncode == 0:
-                    for tty in r.stdout.strip().splitlines():
-                        subprocess.run(
-                            ["tmux", "refresh-client", "-C",
-                             f"{cols},{rows}", "-t", tty],
-                            capture_output=True, timeout=2,
-                        )
 
     except Exception as e:
         print(f"[Terminal] WebSocket error: {e}", file=sys.stderr)
@@ -346,16 +318,4 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
             os.rmdir(fifo_dir)
         except OSError:
             pass
-        # Restore laptop size: refresh-client without -C resets to actual
-        # terminal dimensions. tmux then auto-resizes the window.
-        r = subprocess.run(
-            ["tmux", "list-clients", "-t", session_name, "-F", "#{client_tty}"],
-            capture_output=True, text=True,
-        )
-        if r.returncode == 0:
-            for tty in r.stdout.strip().splitlines():
-                subprocess.run(
-                    ["tmux", "refresh-client", "-t", tty],
-                    capture_output=True,
-                )
         print(f"[Terminal] Disconnected from '{session_name}'", file=sys.stderr)

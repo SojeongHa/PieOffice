@@ -202,14 +202,15 @@
 
     new ResizeObserver(function () { fitAddon.fit(); }).observe(termContainer);
 
-    // iOS keyboard: visualViewport shrinks but layout doesn't.
-    // Adjust container height so ResizeObserver triggers fit.
+    // iOS keyboard: visualViewport shrinks but layout viewport doesn't.
+    // Resize the entire layout to fit above the keyboard.
     if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", function () {
-        var vv = window.visualViewport;
-        var headerH = document.getElementById("terminal-header").offsetHeight || 0;
-        termContainer.style.height = (vv.height - headerH) + "px";
-      });
+      var onVVResize = function () {
+        var layout = document.getElementById("main-layout");
+        if (layout) layout.style.height = window.visualViewport.height + "px";
+      };
+      window.visualViewport.addEventListener("resize", onVVResize);
+      window.visualViewport.addEventListener("scroll", onVVResize);
     }
 
     var wsProto = location.protocol === "https:" ? "wss" : "ws";
@@ -287,28 +288,19 @@
       fitAddon = null;
     }
 
-    // Hide terminal, show office
+    // Hide terminal, show empty state
     document.getElementById("terminal-header").style.display = "none";
     document.getElementById("terminal-container").style.display = "none";
     document.getElementById("terminal-container").innerHTML = "";
-    document.getElementById("empty-state").style.display = "block";
+    document.getElementById("empty-state").style.display = "flex";
+    // Reset layout height
+    document.getElementById("main-layout").style.height = "";
 
     // Re-render session list to remove active state
     if (lastSessionsJson) {
       renderSessionList(JSON.parse(lastSessionsJson));
     }
 
-    // Restore tmux window size for laptop (tell server to resize back)
-    if (sessionToRestore) {
-      fetch(location.origin + "/restore-size", {
-        method: "POST",
-        headers: {
-          "Authorization": "Bearer " + token,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ session: sessionToRestore }),
-      }).catch(function () {});
-    }
   };
 
 
