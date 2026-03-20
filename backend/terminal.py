@@ -136,16 +136,15 @@ caffeinate = CaffeinateManager()
 
 
 def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
-    """WebSocket handler: attach to a tmux session and relay I/O.
+    """WebSocket handler: relay I/O to tmux via pipe-pane + send-keys.
 
-    Uses macOS `script -q /dev/null` to allocate a pty outside Python,
-    avoiding segfaults from pty.fork()/openpty() in Flask's threaded server.
-    We just read/write to subprocess PIPE — completely thread-safe.
+    No extra tmux client is created — the laptop remains the only client,
+    so tmux auto-resize works perfectly. Output is streamed via pipe-pane
+    to a FIFO that we read. Input is sent via tmux send-keys.
 
     Protocol:
     - Client sends JSON: {"type": "auth", "token": "..."} first
-    - After auth, client sends JSON: {"type": "input", "data": "..."} for keystrokes
-    - Client sends JSON: {"type": "resize", "cols": N, "rows": N} for resize
+    - Client sends JSON: {"type": "input", "data": "..."} for keystrokes
     - Client sends JSON: {"type": "ping"} for keepalive
     - Server sends JSON: {"type": "output", "data": "..."} for terminal output
     - Server sends JSON: {"type": "error", "message": "..."} on errors
@@ -173,45 +172,47 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     ws.send(json.dumps({"type": "connected", "session": session_name}))
     caffeinate.acquire()
 
-    # `script -q /dev/null` allocates a pty for us — Python just uses pipes.
-    # This avoids pty.openpty()/pty.fork() which segfault in threaded Flask.
-    # Use attach-session (not new-session -t) to avoid grouped sessions that
-    # leave orphaned size constraints after disconnect.
-    proc = subprocess.Popen(
-        ["script", "-q", "/dev/null",
-         "tmux", "attach-session", "-t", session_name],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+    # Create a FIFO for pipe-pane output
+    import tempfile
+    fifo_dir = tempfile.mkdtemp(prefix="pieterm-")
+    fifo_path = os.path.join(fifo_dir, "pane.fifo")
+    os.mkfifo(fifo_path)
+
+    # Start pipe-pane: tmux streams pane output to our FIFO
+    subprocess.run(
+        ["tmux", "pipe-pane", "-t", session_name, f"cat > {fifo_path}"],
+        capture_output=True,
     )
 
-    print(f"[Terminal] Connected to '{session_name}' (pid={proc.pid})", file=sys.stderr)
+    print(f"[Terminal] pipe-pane connected to '{session_name}'", file=sys.stderr)
 
     stop = threading.Event()
 
-    stdout_fd = proc.stdout.fileno()
-
-    def _read_output():
-        """Read subprocess stdout via raw fd and send to WebSocket."""
+    def _read_fifo():
+        """Read pane output from FIFO and send to WebSocket."""
         try:
+            fd = os.open(fifo_path, os.O_RDONLY | os.O_NONBLOCK)
+            import select
             while not stop.is_set():
-                try:
-                    data = os.read(stdout_fd, 4096)
-                    if not data:
-                        break
-                    ws.send(json.dumps({
-                        "type": "output",
-                        "data": data.decode("utf-8", errors="replace"),
-                    }))
-                except OSError:
-                    break
+                r, _, _ = select.select([fd], [], [], 1.0)
+                if r:
+                    data = os.read(fd, 4096)
+                    if data:
+                        ws.send(json.dumps({
+                            "type": "output",
+                            "data": data.decode("utf-8", errors="replace"),
+                        }))
         except Exception as e:
             if not stop.is_set():
-                print(f"[Terminal] reader error: {e}", file=sys.stderr)
+                print(f"[Terminal] fifo reader error: {e}", file=sys.stderr)
         finally:
+            try:
+                os.close(fd)
+            except Exception:
+                pass
             stop.set()
 
-    reader = threading.Thread(target=_read_output, daemon=True)
+    reader = threading.Thread(target=_read_fifo, daemon=True)
     reader.start()
 
     try:
@@ -233,50 +234,25 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
             elif msg_type == "input":
                 data = msg.get("data", "")
                 if data:
-                    try:
-                        os.write(proc.stdin.fileno(), data.encode("utf-8"))
-                    except (BrokenPipeError, OSError):
-                        break
-
-            elif msg_type == "resize":
-                cols = msg.get("cols", 80)
-                rows = msg.get("rows", 24)
-                subprocess.run(
-                    ["tmux", "resize-window", "-t", session_name,
-                     "-x", str(cols), "-y", str(rows)],
-                    capture_output=True, timeout=2,
-                )
+                    subprocess.run(
+                        ["tmux", "send-keys", "-t", session_name, "-l", data],
+                        capture_output=True, timeout=2,
+                    )
 
     except Exception as e:
         print(f"[Terminal] WebSocket error: {e}", file=sys.stderr)
     finally:
         stop.set()
         caffeinate.release()
-        # Kill script process, then detach any stale tmux clients.
-        proc.kill()
-        try:
-            proc.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            pass
-        # Find and detach dead tmux clients attached to this session
-        time.sleep(0.2)
-        result = subprocess.run(
-            ["tmux", "list-clients", "-t", session_name, "-F",
-             "#{client_tty}:#{client_pid}"],
-            capture_output=True, text=True,
+        # Stop pipe-pane
+        subprocess.run(
+            ["tmux", "pipe-pane", "-t", session_name],
+            capture_output=True,
         )
-        if result.returncode == 0:
-            for line in result.stdout.strip().splitlines():
-                parts = line.split(":", 1)
-                if len(parts) == 2:
-                    tty, pid_str = parts
-                    try:
-                        # Check if the client process is still alive
-                        os.kill(int(pid_str), 0)
-                    except (OSError, ValueError):
-                        # Process is dead — detach this stale client
-                        subprocess.run(
-                            ["tmux", "detach-client", "-t", tty],
-                            capture_output=True,
-                        )
+        # Clean up FIFO
+        try:
+            os.unlink(fifo_path)
+            os.rmdir(fifo_dir)
+        except OSError:
+            pass
         print(f"[Terminal] Disconnected from '{session_name}'", file=sys.stderr)
