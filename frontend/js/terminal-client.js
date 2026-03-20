@@ -172,8 +172,9 @@
     document.getElementById("session-title").textContent = sessionName;
     setStatus("connecting", "Connecting...");
 
-    // Hide office, show terminal
+    // Hide empty state, show terminal + quick actions
     document.getElementById("empty-state").style.display = "none";
+    document.getElementById("quick-actions").style.display = "flex";
     var termContainer = document.getElementById("terminal-container");
     termContainer.style.display = "block";
     termContainer.innerHTML = "";
@@ -231,8 +232,13 @@
     ws.onmessage = function (event) {
       var msg = JSON.parse(event.data);
       if (msg.type === "connected") {
-        setStatus("connected", "Connected");
+        setStatus("connected", "Loading...");
         ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+      } else if (msg.type === "loading") {
+        setStatus("connecting", msg.message || "Loading...");
+      } else if (msg.type === "loaded") {
+        setStatus("connected", "Connected");
+        if (term) term.scrollToBottom();
       } else if (msg.type === "output") {
         term.write(msg.data);
       } else if (msg.type === "error") {
@@ -288,10 +294,11 @@
       fitAddon = null;
     }
 
-    // Hide terminal, show empty state
+    // Hide terminal + quick actions, show empty state
     document.getElementById("terminal-header").style.display = "none";
     document.getElementById("terminal-container").style.display = "none";
     document.getElementById("terminal-container").innerHTML = "";
+    document.getElementById("quick-actions").style.display = "none";
     document.getElementById("empty-state").style.display = "flex";
     // Reset layout height
     document.getElementById("main-layout").style.height = "";
@@ -303,6 +310,18 @@
 
   };
 
+
+  // ── Quick Actions ───────────────────────────────────────
+
+  window.sendQuick = function (data) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "input", data: data }));
+    }
+  };
+
+  window.scrollBottom = function () {
+    if (term) term.scrollToBottom();
+  };
 
   function setStatus(state, text) {
     var dot = document.getElementById("status-dot");

@@ -235,6 +235,17 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     ws.send(json.dumps({"type": "connected", "session": session_name}))
     caffeinate.acquire()
 
+    # Send scrollback history (last 500 lines with escape sequences for colors)
+    ws.send(json.dumps({"type": "loading", "message": "Loading history..."}))
+    r = subprocess.run(
+        ["tmux", "capture-pane", "-t", session_name, "-p", "-e", "-S", "-500"],
+        capture_output=True, text=True,
+    )
+    if r.returncode == 0 and r.stdout:
+        clean = _STATUS_LINE_RE.sub("", r.stdout)
+        ws.send(json.dumps({"type": "output", "data": clean}))
+    ws.send(json.dumps({"type": "loaded"}))
+
 
     # Create a FIFO for pipe-pane output (new output only, going forward)
     fifo_dir = tempfile.mkdtemp(prefix="pieterm-")
