@@ -102,17 +102,18 @@ Ask the user to confirm they have completed the installation before proceeding.
 
 ### Step 5: Test Connection
 
-Start the server on the test port and guide the user through testing:
+Tell the user to open a **separate terminal tab** and run:
 
 ```bash
-cd ~/Documents/workspace/PieOffice
-PIE_TERMINAL_LAN=1 PORT=10318 python3 backend/app.py &
-SERVER_PID=$!
-LAN_IP=$(ipconfig getifaddr en0)
-echo "Open on iPhone: https://$LAN_IP:10318/terminal"
+cd ~/Documents/workspace/PieOffice && ./dev.sh --lan
 ```
 
-Tell the user to open `https://<LAN_IP>:10318/terminal` in iPhone Safari.
+Then get the LAN IP:
+```bash
+ipconfig getifaddr en0
+```
+
+Tell the user to open `https://<LAN_IP>:10316/` in iPhone Safari.
 
 Expected behavior:
 - First visit shows a privacy warning → tap Advanced → Proceed
@@ -122,17 +123,12 @@ Expected behavior:
 
 Wait for the user to confirm it works.
 
-After testing, kill the test server:
-```bash
-kill $SERVER_PID 2>/dev/null
-```
-
 ### Step 6: Summary
 
 Print the final usage guide covering:
 
-- How to start Pie Office in LAN mode: `./dev.sh 10317 --lan`
+- How to start Pie Office in LAN mode: `./dev.sh --lan` (in a separate terminal tab)
 - How to start a Claude session: `claude-tmux` (or `claude` if alias was chosen)
-- How to connect from iPhone: `https://<LAN_IP>:10317/terminal`
+- How to connect from iPhone: `https://<LAN_IP>:10316/`
 - Certificate management: `--revoke` to revoke, re-run to regenerate
 - Optional iOS Shortcut for one-tap access: see `docs/ios-shortcut-setup.md`
