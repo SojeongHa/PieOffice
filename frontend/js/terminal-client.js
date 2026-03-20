@@ -264,11 +264,15 @@
   });
 
   window.scrollUp = function () {
-    if (term) term.scrollLines(-10);
+    if (term) {
+      term.scrollLines(-10);
+    }
   };
 
-  window.scrollBottom = function () {
-    if (term) term.scrollToBottom();
+  window.scrollDown = function () {
+    if (term) {
+      term.scrollToBottom();
+    }
   };
 
   function setStatus(state, text) {

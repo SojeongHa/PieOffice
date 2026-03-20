@@ -358,17 +358,17 @@
       <div id="quick-actions" style="display:none;">
         <div id="input-bar">
           <input type="text" id="term-input" placeholder="Type here (IME supported)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
-          <button onclick="sendInput()">Send</button>
+          <button onclick="window.sendInput()">Send</button>
         </div>
         <div id="action-buttons">
-          <button onclick="scrollUp()">&#8593;</button>
-          <button onclick="scrollBottom()">&#8595;</button>
-          <button onclick="sendQuick('1\n')">1</button>
-          <button onclick="sendQuick('2\n')">2</button>
-          <button onclick="sendQuick('3\n')">3</button>
-          <button onclick="sendQuick('y\n')">y</button>
-          <button onclick="sendQuick('n\n')">n</button>
-          <button onclick="sendQuick('\n')">Enter</button>
+          <button onclick="window.scrollUp()">&#8593;</button>
+          <button onclick="window.scrollDown()">&#8595;</button>
+          <button onclick="window.sendQuick('1\n')">1</button>
+          <button onclick="window.sendQuick('2\n')">2</button>
+          <button onclick="window.sendQuick('3\n')">3</button>
+          <button onclick="window.sendQuick('y\n')">y</button>
+          <button onclick="window.sendQuick('n\n')">n</button>
+          <button onclick="window.sendQuick('\n')">Enter</button>
         </div>
       </div>
     </div>
