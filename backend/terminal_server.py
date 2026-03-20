@@ -155,10 +155,29 @@ def create_mtls_context():
     return ctx
 
 
+def _cleanup_orphaned_web_sessions():
+    """Kill any leftover web-* tmux sessions from previous crashes."""
+    try:
+        result = subprocess.run(
+            ["tmux", "list-sessions", "-F", "#{session_name}:#{session_group}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            return
+        for line in result.stdout.strip().splitlines():
+            parts = line.split(":", 1)
+            if len(parts) == 2 and parts[0].startswith("web-"):
+                subprocess.run(["tmux", "kill-session", "-t", parts[0]], capture_output=True)
+                print(f"[Terminal] Cleaned up orphaned session: {parts[0]}", file=sys.stderr)
+    except Exception:
+        pass
+
+
 def start_terminal_server_thread(port=None):
     """Start the terminal server in a background daemon thread.
     Called from app.py when TERMINAL_LAN_MODE is enabled."""
     port = port or TERMINAL_PORT
+    _cleanup_orphaned_web_sessions()
     ssl_ctx = create_mtls_context()
     if ssl_ctx is None:
         return

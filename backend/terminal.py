@@ -248,17 +248,24 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     finally:
         stop.set()
         caffeinate.release()
+        # Kill the script process
         proc.terminate()
         try:
             proc.wait(timeout=3)
         except subprocess.TimeoutExpired:
             proc.kill()
-        # Clean up ephemeral web session first
+            proc.wait()
+        # Kill the ephemeral web tmux session AND force-kill any grouped clients
         subprocess.run(["tmux", "kill-session", "-t", web_session],
                        capture_output=True)
-        # Then resize back to laptop — must happen AFTER web session is gone
-        # so tmux no longer considers the small phone client
-        time.sleep(0.2)
+        # Also kill by PID in case the session name doesn't match
+        try:
+            os.kill(proc.pid, 9)
+        except OSError:
+            pass
+        # Wait for tmux to fully clean up the session
+        time.sleep(0.5)
+        # Resize all windows in the original session back to fit the laptop
         subprocess.run(["tmux", "resize-window", "-A", "-t", session_name],
                        capture_output=True)
         print(f"[Terminal] Disconnected from '{session_name}', restored window size",
