@@ -176,6 +176,14 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     # `script -q /dev/null` allocates a pty for us — Python just uses pipes.
     # This avoids pty.openpty()/pty.fork() which segfault in threaded Flask.
     web_session = f"web-{threading.current_thread().ident}"
+
+    # Set window-size to 'largest' so phone's small screen doesn't shrink laptop's view.
+    # Each client renders at its own size independently.
+    subprocess.run(
+        ["tmux", "set-option", "-g", "window-size", "largest"],
+        capture_output=True,
+    )
+
     proc = subprocess.Popen(
         ["script", "-q", "/dev/null",
          "tmux", "new-session", "-t", session_name, "-s", web_session],
@@ -252,7 +260,13 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
             proc.wait(timeout=3)
         except subprocess.TimeoutExpired:
             proc.kill()
-        # Clean up ephemeral web session
+        # Clean up ephemeral web session first
         subprocess.run(["tmux", "kill-session", "-t", web_session],
                        capture_output=True)
-        print(f"[Terminal] Disconnected from '{session_name}'", file=sys.stderr)
+        # Then resize back to laptop — must happen AFTER web session is gone
+        # so tmux no longer considers the small phone client
+        time.sleep(0.2)
+        subprocess.run(["tmux", "resize-window", "-A", "-t", session_name],
+                       capture_output=True)
+        print(f"[Terminal] Disconnected from '{session_name}', restored window size",
+              file=sys.stderr)
