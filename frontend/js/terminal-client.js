@@ -180,8 +180,9 @@
 
     term = new Terminal({
       cursorBlink: true,
-      fontSize: 14,
+      fontSize: 13,
       fontFamily: '"Menlo", "Courier New", monospace',
+      scrollback: 5000,
       theme: {
         background: "#1a1a2e",
         foreground: "#D1D2D3",
@@ -308,16 +309,30 @@
   };
 
   function handleResize() {
-    if (fitAddon) {
-      // Use visualViewport height for iOS keyboard
-      if (window.visualViewport) {
-        var container = document.getElementById("terminal-container");
-        var header = document.getElementById("terminal-header");
-        var headerH = header ? header.offsetHeight : 0;
-        container.style.height = (window.visualViewport.height - headerH) + "px";
+    if (!fitAddon) return;
+
+    var container = document.getElementById("terminal-container");
+    if (!container) return;
+
+    if (window.visualViewport) {
+      // iOS: visualViewport gives the actual visible area (excluding keyboard)
+      var vv = window.visualViewport;
+      var header = document.getElementById("terminal-header");
+      var headerH = header && header.style.display !== "none" ? header.offsetHeight : 0;
+      var sidebarW = 0;
+      // On desktop, account for sidebar width
+      if (window.innerWidth > 600) {
+        var sidebar = document.getElementById("sidebar");
+        sidebarW = sidebar ? sidebar.offsetWidth : 0;
       }
-      fitAddon.fit();
+      container.style.height = (vv.height - headerH) + "px";
+      container.style.width = (vv.width - sidebarW) + "px";
+
+      // Scroll the page so the terminal input area is visible above keyboard
+      window.scrollTo(0, vv.offsetTop);
     }
+
+    fitAddon.fit();
   }
 
   function setStatus(state, text) {

@@ -33,6 +33,9 @@
       height: 100vh; height: 100dvh;
       width: 100vw;
       overflow: hidden;
+      /* Prevent iOS bounce scroll */
+      overscroll-behavior: none;
+      -webkit-overflow-scrolling: touch;
     }
 
     /* Auth Screen */
