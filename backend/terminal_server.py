@@ -46,14 +46,17 @@ async def handle_http(path, headers):
     auth = headers.get("Authorization", "")
     token = auth.removeprefix("Bearer ").strip()
 
-    if path == "/" or path == "":
+    # Strip query string for path matching
+    clean_path = path.split("?")[0]
+
+    if clean_path == "/" or clean_path == "":
         html_path = os.path.join(PROJECT_ROOT, "frontend", "terminal.html")
         with open(html_path, "rb") as f:
             body = f.read()
         return 200, [("Content-Type", "text/html")], body
 
-    if path.startswith("/static/"):
-        file_path = os.path.join(PROJECT_ROOT, "frontend", path[len("/static/"):])
+    if clean_path.startswith("/static/"):
+        file_path = os.path.join(PROJECT_ROOT, "frontend", clean_path[len("/static/"):])
         if os.path.isfile(file_path):
             ct = "application/javascript" if file_path.endswith(".js") else "text/css"
             with open(file_path, "rb") as f:
@@ -61,11 +64,11 @@ async def handle_http(path, headers):
             return 200, [("Content-Type", ct)], body
         return 404, [], b"Not found"
 
-    if path == "/session-token":
+    if clean_path == "/session-token":
         tok = session_tokens.issue()
         return 200, [("Content-Type", "application/json")], json.dumps({"token": tok}).encode()
 
-    if path == "/sessions":
+    if clean_path == "/sessions":
         if not session_tokens.validate(token):
             return 401, [("Content-Type", "application/json")], b'{"error":"unauthorized"}'
         sessions = list_tmux_sessions()
@@ -77,7 +80,7 @@ async def handle_http(path, headers):
         }
         return 200, [("Content-Type", "application/json")], json.dumps(data).encode()
 
-    if path == "/health":
+    if clean_path == "/health":
         data = {"status": "ok", "active_tokens": session_tokens.active_count}
         return 200, [("Content-Type", "application/json")], json.dumps(data).encode()
 

@@ -20,7 +20,7 @@
   acquireSessionToken();
 
   function acquireSessionToken() {
-    fetch(location.origin + "/session-token", { method: "POST" })
+    fetch(location.origin + "/session-token")
       .then(function (r) {
         if (!r.ok) { showError("Device not authorized."); return null; }
         return r.json();
