@@ -252,15 +252,14 @@ def handle_terminal_ws(ws, session_name: str, session_tokens=None) -> None:
     finally:
         stop.set()
         caffeinate.release()
-        proc.terminate()
+        # Send tmux detach through stdin so the client exits cleanly.
+        # This lets tmux auto-resize to the remaining laptop client.
+        try:
+            os.write(proc.stdin.fileno(), b"\x02d")  # Ctrl+B d (tmux detach)
+        except OSError:
+            pass
         try:
             proc.wait(timeout=3)
         except subprocess.TimeoutExpired:
             proc.kill()
-        # Wait for tmux to detect the dead client, then force resize
-        time.sleep(0.3)
-        subprocess.run(
-            ["tmux", "resize-window", "-A", "-t", session_name],
-            capture_output=True,
-        )
         print(f"[Terminal] Disconnected from '{session_name}'", file=sys.stderr)
