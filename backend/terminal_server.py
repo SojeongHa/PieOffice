@@ -117,7 +117,9 @@ async def handle_terminal(websocket, session_name):
     child_pid, master_fd = pty.fork()
 
     if child_pid == 0:
-        # Child: exec tmux attach
+        # Child: set UTF-8 locale for Korean input, then exec tmux attach
+        os.environ["LANG"] = "en_US.UTF-8"
+        os.environ["LC_ALL"] = "en_US.UTF-8"
         os.execlp("tmux", "tmux", "attach-session", "-t", session_name)
         os._exit(1)
 

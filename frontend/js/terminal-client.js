@@ -167,6 +167,22 @@
 
     new ResizeObserver(function () { fitAddon.fit(); }).observe(termContainer);
 
+    // Touch scrolling for iOS — xterm.js captures touch for selection,
+    // convert vertical swipes to scroll instead
+    var touchStartY = null;
+    termContainer.addEventListener("touchstart", function (e) {
+      if (e.touches.length === 1) touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+    termContainer.addEventListener("touchmove", function (e) {
+      if (touchStartY === null || e.touches.length !== 1) return;
+      var dy = touchStartY - e.touches[0].clientY;
+      var lines = Math.round(dy / 20);
+      if (lines !== 0) {
+        term.scrollLines(lines);
+        touchStartY = e.touches[0].clientY;
+      }
+    }, { passive: true });
+
     // iOS keyboard
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", function () {
