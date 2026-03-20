@@ -241,6 +241,7 @@
         if (term) term.scrollToBottom();
       } else if (msg.type === "output") {
         term.write(msg.data);
+        term.scrollToBottom();
       } else if (msg.type === "error") {
         setStatus("disconnected", msg.message);
         term.write("\r\n\x1b[31m" + msg.message + "\x1b[0m\r\n");
