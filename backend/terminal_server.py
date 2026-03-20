@@ -9,6 +9,7 @@ or run standalone:
 """
 
 import asyncio
+import fcntl
 import json
 import os
 import pty
@@ -18,8 +19,10 @@ import ssl
 import struct
 import subprocess
 import sys
-import fcntl
 import termios
+
+import websockets
+from websockets.http11 import Response
 
 # Add backend to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -227,24 +230,24 @@ def create_ssl_context():
 
 async def handler(websocket):
     """Route incoming connections — HTTP or WebSocket."""
-    path = websocket.request.path if hasattr(websocket, 'request') else "/"
+    path = websocket.request.path if hasattr(websocket.request, 'path') else "/"
 
-    # WebSocket paths: /ws/<session_name>
     if path.startswith("/ws/"):
         session_name = path[4:]
         await handle_terminal(websocket, session_name)
         return
 
-    # For non-WebSocket HTTP, websockets library handles this via process_request
 
+async def process_request(connection, request):
+    """Handle plain HTTP requests (non-WebSocket upgrade).
+    websockets v16 signature: process_request(connection, request)."""
+    path = request.path
 
-async def process_request(path, request_headers):
-    """Handle plain HTTP requests (non-WebSocket upgrade)."""
     if path.startswith("/ws/"):
         return None  # let WebSocket handler take over
 
-    status, headers, body = await handle_http(path, request_headers)
-    return status, headers, body
+    status, headers_list, body = await handle_http(path, request.headers)
+    return Response(status, "OK", websockets.Headers(headers_list), body)
 
 
 async def main():
@@ -253,11 +256,7 @@ async def main():
         print("[Terminal] Cannot start without TLS certificates", file=sys.stderr)
         sys.exit(1)
 
-    try:
-        import websockets
-    except ImportError:
-        print("[Terminal] ERROR: pip install websockets", file=sys.stderr)
-        sys.exit(1)
+    import websockets
 
     print(f"[Terminal] Starting on https://0.0.0.0:{TERMINAL_PORT}", file=sys.stderr)
 
