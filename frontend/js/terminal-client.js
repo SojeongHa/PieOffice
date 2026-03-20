@@ -236,15 +236,15 @@
     if (lastSessionsJson) renderSessionList(JSON.parse(lastSessionsJson));
   };
 
-  // ── Quick Actions ──────────────────────────────────────
+  // ── Quick Actions (bound after DOM ready) ──────────────
 
-  window.sendQuick = function (data) {
+  function sendQuick(data) {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "input", data: data }));
     }
-  };
+  }
 
-  window.sendInput = function () {
+  function sendInput() {
     var input = document.getElementById("term-input");
     if (!input) return;
     var text = input.value;
@@ -253,27 +253,31 @@
     }
     input.value = "";
     input.focus();
-  };
+  }
 
-  // Enter key in input field sends text
-  document.addEventListener("keydown", function (e) {
-    if (e.target && e.target.id === "term-input" && e.key === "Enter") {
+  // Bind buttons by ID and class after DOM is ready
+  document.getElementById("btn-send").addEventListener("click", sendInput);
+
+  document.getElementById("btn-up").addEventListener("click", function () {
+    if (term) term.scrollLines(-10);
+  });
+
+  document.getElementById("btn-down").addEventListener("click", function () {
+    if (term) term.scrollToBottom();
+  });
+
+  document.querySelectorAll(".btn-quick").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      sendQuick(btn.getAttribute("data-keys"));
+    });
+  });
+
+  document.getElementById("term-input").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
       e.preventDefault();
       sendInput();
     }
   });
-
-  window.scrollUp = function () {
-    if (term) {
-      term.scrollLines(-10);
-    }
-  };
-
-  window.scrollDown = function () {
-    if (term) {
-      term.scrollToBottom();
-    }
-  };
 
   function setStatus(state, text) {
     var dot = document.getElementById("status-dot");
