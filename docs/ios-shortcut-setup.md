@@ -27,8 +27,8 @@
 
 **Action 3: Open URL**
 - Add "Open URLs" action
-- URL: `https://<mac-ip>:10317/terminal`
-  - Replace `<mac-ip>` with your Mac's LAN IP
+- URL: `https://<mac-ip>:10316/`
+  - Replace `<mac-ip>` with your Mac's LAN IP (or Tailscale IP for cross-network access)
 
 ### Add to Home Screen:
 - Tap share icon > "Add to Home Screen"

@@ -98,12 +98,25 @@
       var statusClass = s.attached > 0 ? "attached" : "detached";
       var shortCwd = s.cwd.replace(/^\/Users\/[^/]+\//, "~/");
       var projectName = shortCwd.split("/").pop() || s.name;
-      item.innerHTML =
-        '<span class="session-status ' + statusClass + '"></span>' +
-        '<div class="session-info">' +
-          '<div class="session-name">' + projectName + '</div>' +
-          '<div class="session-cwd">' + shortCwd + '</div>' +
-        '</div>';
+
+      var statusDot = document.createElement("span");
+      statusDot.className = "session-status " + statusClass;
+
+      var nameEl = document.createElement("div");
+      nameEl.className = "session-name";
+      nameEl.textContent = projectName;
+
+      var cwdEl = document.createElement("div");
+      cwdEl.className = "session-cwd";
+      cwdEl.textContent = shortCwd;
+
+      var infoEl = document.createElement("div");
+      infoEl.className = "session-info";
+      infoEl.appendChild(nameEl);
+      infoEl.appendChild(cwdEl);
+
+      item.appendChild(statusDot);
+      item.appendChild(infoEl);
       list.appendChild(item);
     });
   }
@@ -185,7 +198,8 @@
     };
 
     ws.onmessage = function (event) {
-      var msg = JSON.parse(event.data);
+      var msg;
+      try { msg = JSON.parse(event.data); } catch (e) { return; }
       if (msg.type === "connected") {
         setStatus("connected", "Connected");
         ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));

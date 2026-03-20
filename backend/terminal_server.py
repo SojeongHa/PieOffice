@@ -11,13 +11,14 @@ or run standalone:
 import asyncio
 import fcntl
 import json
+import mimetypes
 import os
 import pty
+import re
 import select
 import signal
 import ssl
 import struct
-import subprocess
 import sys
 import termios
 
@@ -34,6 +35,10 @@ from terminal_auth import SessionTokenStore
 
 TERMINAL_PORT = int(os.environ.get("TERMINAL_PORT", 10316))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FRONTEND_ROOT = os.path.realpath(os.path.join(PROJECT_ROOT, "frontend"))
+
+# Regex for valid tmux session names (alphanumeric, hyphens, underscores)
+SESSION_NAME_RE = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
 
 session_tokens = SessionTokenStore(ttl=terminal_config.TERMINAL_SESSION_TOKEN_TTL)
 
@@ -41,12 +46,29 @@ session_tokens = SessionTokenStore(ttl=terminal_config.TERMINAL_SESSION_TOKEN_TT
 http_limiter = RateLimiter(max_requests=30, window_seconds=60)   # 30 req/min for HTTP
 ws_limiter = RateLimiter(max_requests=10, window_seconds=60)     # 10 WS connects/min
 
+# Security headers for all HTML/JS responses
+SECURITY_HEADERS = [
+    ("Content-Security-Policy",
+     "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; "
+     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self' wss:"),
+    ("X-Content-Type-Options", "nosniff"),
+    ("X-Frame-Options", "DENY"),
+    ("Strict-Transport-Security", "max-age=31536000"),
+]
+
+# HTTP reason phrases
+HTTP_REASONS = {200: "OK", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found", 429: "Too Many Requests", 503: "Service Unavailable"}
+
+
+def _reason(status: int) -> str:
+    return HTTP_REASONS.get(status, "Unknown")
+
 
 # ---------------------------------------------------------------------------
 # HTTP handler (session list, token, static files)
 # ---------------------------------------------------------------------------
 
-async def handle_http(path, headers):
+async def handle_http(path, headers, *, has_client_cert: bool = False):
     """Handle HTTP requests (non-WebSocket)."""
     auth = headers.get("Authorization", "")
     token = auth.removeprefix("Bearer ").strip()
@@ -56,21 +78,34 @@ async def handle_http(path, headers):
 
     if clean_path == "/" or clean_path == "":
         html_path = os.path.join(PROJECT_ROOT, "frontend", "terminal.html")
-        with open(html_path, "rb") as f:
-            body = f.read()
-        return 200, [("Content-Type", "text/html")], body
+        try:
+            with open(html_path, "rb") as f:
+                body = f.read()
+        except FileNotFoundError:
+            return 404, [], b"terminal.html not found"
+        return 200, [("Content-Type", "text/html")] + SECURITY_HEADERS, body
 
     if clean_path.startswith("/static/"):
-        file_path = os.path.join(PROJECT_ROOT, "frontend", clean_path[len("/static/"):])
-        if os.path.isfile(file_path):
-            ct = "application/javascript" if file_path.endswith(".js") else "text/css"
-            with open(file_path, "rb") as f:
+        # Path traversal protection: resolve and validate within FRONTEND_ROOT
+        relative = clean_path[len("/static/"):]
+        resolved = os.path.realpath(os.path.join(FRONTEND_ROOT, relative))
+        if not resolved.startswith(FRONTEND_ROOT + os.sep):
+            return 403, [], b"Forbidden"
+        if os.path.isfile(resolved):
+            ct, _ = mimetypes.guess_type(resolved)
+            ct = ct or "application/octet-stream"
+            with open(resolved, "rb") as f:
                 body = f.read()
-            return 200, [("Content-Type", ct)], body
+            return 200, [("Content-Type", ct)] + SECURITY_HEADERS, body
         return 404, [], b"Not found"
 
     if clean_path == "/session-token":
+        # Require valid client certificate for token issuance
+        if not has_client_cert:
+            return 403, [("Content-Type", "application/json")], b'{"error":"client certificate required"}'
         tok = session_tokens.issue()
+        if tok is None:
+            return 503, [("Content-Type", "application/json")], b'{"error":"token store full"}'
         return 200, [("Content-Type", "application/json")], json.dumps({"token": tok}).encode()
 
     if clean_path == "/sessions":
@@ -86,7 +121,7 @@ async def handle_http(path, headers):
         return 200, [("Content-Type", "application/json")], json.dumps(data).encode()
 
     if clean_path == "/health":
-        data = {"status": "ok", "active_tokens": session_tokens.active_count}
+        data = {"status": "ok"}
         return 200, [("Content-Type", "application/json")], json.dumps(data).encode()
 
     return 404, [], b"Not found"
@@ -99,6 +134,11 @@ async def handle_http(path, headers):
 async def handle_terminal(websocket, session_name):
     """Handle a terminal WebSocket connection using pty.fork()."""
 
+    # Validate session name format (prevent tmux target syntax injection)
+    if not SESSION_NAME_RE.match(session_name):
+        await websocket.send(json.dumps({"type": "error", "message": "invalid session name"}))
+        return
+
     # Auth handshake
     try:
         raw = await asyncio.wait_for(websocket.recv(), timeout=10)
@@ -106,8 +146,14 @@ async def handle_terminal(websocket, session_name):
         if msg.get("type") != "auth" or not session_tokens.validate(msg.get("token", "")):
             await websocket.send(json.dumps({"type": "error", "message": "unauthorized"}))
             return
-    except Exception:
+    except (asyncio.TimeoutError, json.JSONDecodeError, TypeError):
         return
+    except Exception as e:
+        print(f"[Terminal] Unexpected auth error: {e}", file=sys.stderr)
+        return
+
+    # Revoke token after successful auth (single-use)
+    session_tokens.revoke(msg.get("token", ""))
 
     # Verify session exists
     sessions = list_tmux_sessions()
@@ -130,34 +176,34 @@ async def handle_terminal(websocket, session_name):
 
     print(f"[Terminal] Connected to '{session_name}' (child={child_pid})", file=sys.stderr)
 
-    loop = asyncio.get_event_loop()
-    stop = False
+    loop = asyncio.get_running_loop()
+    stop = asyncio.Event()
 
     # Read from pty master → send to WebSocket
     async def read_pty():
-        nonlocal stop
         try:
-            while not stop:
+            while not stop.is_set():
                 # Use executor for blocking select/read
                 data = await loop.run_in_executor(None, _read_master, master_fd)
                 if data is None:
                     break
-                await websocket.send(json.dumps({
-                    "type": "output",
-                    "data": data.decode("utf-8", errors="replace"),
-                }))
+                if data:  # skip empty timeout reads
+                    await websocket.send(json.dumps({
+                        "type": "output",
+                        "data": data.decode("utf-8", errors="replace"),
+                    }))
         except Exception as e:
-            if not stop:
+            if not stop.is_set():
                 print(f"[Terminal] pty reader error: {e}", file=sys.stderr)
         finally:
-            stop = True
+            stop.set()
 
     reader_task = asyncio.create_task(read_pty())
 
     # Read from WebSocket → write to pty master
     try:
         async for raw in websocket:
-            if stop:
+            if stop.is_set():
                 break
             try:
                 msg = json.loads(raw)
@@ -171,19 +217,19 @@ async def handle_terminal(websocket, session_name):
 
             elif msg_type == "input":
                 data = msg.get("data", "")
-                if data:
+                if data and len(data) <= 1024:
                     os.write(master_fd, data.encode("utf-8"))
 
             elif msg_type == "resize":
-                cols = msg.get("cols", 80)
-                rows = msg.get("rows", 24)
+                cols = max(1, min(500, msg.get("cols", 80)))
+                rows = max(1, min(200, msg.get("rows", 24)))
                 winsize = struct.pack("HHHH", rows, cols, 0, 0)
                 fcntl.ioctl(master_fd, termios.TIOCSWINSZ, winsize)
 
     except Exception as e:
         print(f"[Terminal] WebSocket error: {e}", file=sys.stderr)
     finally:
-        stop = True
+        stop.set()
         reader_task.cancel()
         caffeinate.release()
         try:
@@ -192,14 +238,14 @@ async def handle_terminal(websocket, session_name):
             pass
         try:
             os.kill(child_pid, signal.SIGTERM)
-            os.waitpid(child_pid, 0)
+            await loop.run_in_executor(None, os.waitpid, child_pid, 0)
         except OSError:
             pass
         print(f"[Terminal] Disconnected from '{session_name}'", file=sys.stderr)
 
 
 def _read_master(master_fd):
-    """Blocking read from pty master. Returns None on EOF/error."""
+    """Blocking read from pty master. Returns None on EOF, b'' on timeout."""
     try:
         r, _, _ = select.select([master_fd], [], [], 1.0)
         if r:
@@ -215,7 +261,7 @@ def _read_master(master_fd):
 # ---------------------------------------------------------------------------
 
 def create_ssl_context():
-    """Create SSL context with optional mTLS."""
+    """Create SSL context with mTLS (CERT_REQUIRED when CA is available)."""
     cert = terminal_config.TERMINAL_TLS_CERT
     key = terminal_config.TERMINAL_TLS_KEY
     ca = terminal_config.TERMINAL_TLS_CA
@@ -230,8 +276,8 @@ def create_ssl_context():
 
     if os.path.isfile(ca):
         ctx.load_verify_locations(ca)
-        ctx.verify_mode = ssl.CERT_OPTIONAL
-        print("[Terminal] mTLS enabled", file=sys.stderr)
+        ctx.verify_mode = ssl.CERT_REQUIRED
+        print("[Terminal] mTLS enabled (CERT_REQUIRED)", file=sys.stderr)
     else:
         print("[Terminal] TLS only (no mTLS — CA not found)", file=sys.stderr)
 
@@ -256,6 +302,16 @@ def _get_client_ip(connection):
         return "unknown"
 
 
+def _has_client_cert(connection):
+    """Check if the client presented a valid TLS certificate."""
+    try:
+        transport = connection.transport
+        ssl_obj = transport.get_extra_info("ssl_object")
+        return ssl_obj is not None and ssl_obj.getpeercert() is not None
+    except (AttributeError, TypeError):
+        return False
+
+
 async def process_request(connection, request):
     """Handle plain HTTP requests (non-WebSocket upgrade).
     websockets v16 signature: process_request(connection, request)."""
@@ -274,8 +330,9 @@ async def process_request(connection, request):
         print(f"[Terminal] Rate limited HTTP: {client_ip}", file=sys.stderr)
         return Response(429, "Too Many Requests", websockets.Headers([]), b"rate limited")
 
-    status, headers_list, body = await handle_http(path, request.headers)
-    return Response(status, "OK", websockets.Headers(headers_list), body)
+    has_cert = _has_client_cert(connection)
+    status, headers_list, body = await handle_http(path, request.headers, has_client_cert=has_cert)
+    return Response(status, _reason(status), websockets.Headers(headers_list), body)
 
 
 async def main():
@@ -284,10 +341,9 @@ async def main():
         print("[Terminal] Cannot start without TLS certificates", file=sys.stderr)
         sys.exit(1)
 
-    import websockets
-
     print(f"[Terminal] Starting on https://0.0.0.0:{TERMINAL_PORT}", file=sys.stderr)
 
+    sweep_task = None
     async with websockets.serve(
         handler,
         "0.0.0.0",
@@ -296,10 +352,14 @@ async def main():
         process_request=process_request,
         max_size=2**20,
         ping_interval=20,
-        ping_timeout=60,
+        ping_timeout=30,
     ):
-        asyncio.create_task(_periodic_sweep())
-        await asyncio.Future()  # run forever
+        sweep_task = asyncio.create_task(_periodic_sweep())
+        try:
+            await asyncio.Future()  # run forever
+        finally:
+            sweep_task.cancel()
+            await asyncio.gather(sweep_task, return_exceptions=True)
 
 
 async def _periodic_sweep():

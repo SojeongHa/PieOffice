@@ -35,14 +35,16 @@ class RateLimiter:
             return True
 
     def sweep(self) -> None:
-        """Remove stale entries for IPs with no recent activity."""
+        """Remove stale entries for IPs with no recent activity.
+        Timestamps are append-only and monotonically ordered, so checking
+        the last element is sufficient to determine if all entries are stale."""
         now = time.time()
         cutoff = now - self._window
 
         with self._lock:
-            empty_ips = [
+            stale_ips = [
                 ip for ip, timestamps in self._hits.items()
-                if not timestamps or timestamps[-1] <= cutoff
+                if not any(t > cutoff for t in timestamps)
             ]
-            for ip in empty_ips:
+            for ip in stale_ips:
                 del self._hits[ip]

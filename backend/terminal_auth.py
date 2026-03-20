@@ -6,18 +6,19 @@ for WebSocket authentication (since browsers don't reliably pass client
 certificates on WebSocket upgrades).
 
 Flow:
-  1. Client loads /terminal (mTLS required — only registered devices pass)
-  2. Page calls GET /terminal/session-token → server issues a random token
+  1. Client loads / (mTLS required — only registered devices pass)
+  2. Page calls GET /session-token → server issues a single-use random token
   3. Token is stored in-memory with TTL (not persisted to disk)
   4. Client sends token in WebSocket auth handshake
-  5. Server validates token and attaches to tmux session
+  5. Server validates and revokes token (single-use)
 """
 
-import hmac
 import secrets
 import sys
 import threading
 import time
+
+MAX_TOKENS = 100  # Hard cap to prevent memory exhaustion
 
 
 class SessionTokenStore:
@@ -28,24 +29,29 @@ class SessionTokenStore:
         self._lock = threading.Lock()
         self._ttl = ttl
 
-    def issue(self) -> str:
-        """Issue a new session token."""
+    def issue(self) -> str | None:
+        """Issue a new session token. Returns None if store is full."""
         token = secrets.token_hex(32)
         with self._lock:
-            self._tokens[token] = time.time() + self._ttl
             self._sweep()
+            if len(self._tokens) >= MAX_TOKENS:
+                print(f"[Auth] Token store full ({MAX_TOKENS}), rejecting", file=sys.stderr)
+                return None
+            self._tokens[token] = time.time() + self._ttl
         return token
 
     def validate(self, candidate: str) -> bool:
-        """Validate a session token (constant-time comparison, checks expiry)."""
-        if not candidate:
+        """Validate a session token. Uses dict lookup (O(1)) instead of
+        iterating all tokens. Token secrets are 64-char random hex — timing
+        attacks on dict lookup are not practical for this entropy level."""
+        if not candidate or len(candidate) != 64:
             return False
         with self._lock:
             self._sweep()
-            for stored_token, expiry in self._tokens.items():
-                if hmac.compare_digest(candidate, stored_token):
-                    return time.time() < expiry
-        return False
+            expiry = self._tokens.get(candidate)
+            if expiry is None:
+                return False
+            return time.time() < expiry
 
     def revoke(self, token: str) -> None:
         """Revoke a specific token."""
