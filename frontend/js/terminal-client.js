@@ -256,6 +256,13 @@
     input.focus();
   };
 
+  window._termClearInput = function () {
+    var input = document.getElementById("term-input");
+    if (!input) return;
+    input.value = "";
+    input.focus();
+  };
+
   var scrollMode = false;
   var touchStartY = 0;
 

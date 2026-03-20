@@ -28,6 +28,7 @@ from websockets.http11 import Response
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import config as terminal_config
+from rate_limiter import RateLimiter
 from terminal import list_tmux_sessions, caffeinate
 from terminal_auth import SessionTokenStore
 
@@ -35,6 +36,10 @@ TERMINAL_PORT = int(os.environ.get("TERMINAL_PORT", 10316))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 session_tokens = SessionTokenStore(ttl=terminal_config.TERMINAL_SESSION_TOKEN_TTL)
+
+# Rate limiters: separate limits for different endpoints
+http_limiter = RateLimiter(max_requests=30, window_seconds=60)   # 30 req/min for HTTP
+ws_limiter = RateLimiter(max_requests=10, window_seconds=60)     # 10 WS connects/min
 
 
 # ---------------------------------------------------------------------------
@@ -243,14 +248,31 @@ async def handler(websocket):
         return
 
 
+def _get_client_ip(connection):
+    """Extract client IP from websockets connection."""
+    try:
+        return connection.remote_address[0]
+    except (AttributeError, TypeError, IndexError):
+        return "unknown"
+
+
 async def process_request(connection, request):
     """Handle plain HTTP requests (non-WebSocket upgrade).
     websockets v16 signature: process_request(connection, request)."""
     path = request.path
-    print(f"[Terminal] HTTP {request.method if hasattr(request, 'method') else '?'} {path}", file=sys.stderr)
+    client_ip = _get_client_ip(connection)
+    print(f"[Terminal] HTTP {request.method if hasattr(request, 'method') else '?'} {path} from {client_ip}", file=sys.stderr)
 
     if path.startswith("/ws/"):
+        if not ws_limiter.allow(client_ip):
+            print(f"[Terminal] Rate limited WS: {client_ip}", file=sys.stderr)
+            return Response(429, "Too Many Requests", websockets.Headers([]), b"rate limited")
         return None  # let WebSocket handler take over
+
+    # Health endpoint is exempt from rate limiting
+    if path.split("?")[0] != "/health" and not http_limiter.allow(client_ip):
+        print(f"[Terminal] Rate limited HTTP: {client_ip}", file=sys.stderr)
+        return Response(429, "Too Many Requests", websockets.Headers([]), b"rate limited")
 
     status, headers_list, body = await handle_http(path, request.headers)
     return Response(status, "OK", websockets.Headers(headers_list), body)
@@ -276,7 +298,16 @@ async def main():
         ping_interval=20,
         ping_timeout=60,
     ):
+        asyncio.create_task(_periodic_sweep())
         await asyncio.Future()  # run forever
+
+
+async def _periodic_sweep():
+    """Periodically clean stale entries from rate limiters to prevent memory leaks."""
+    while True:
+        await asyncio.sleep(120)  # every 2 minutes
+        http_limiter.sweep()
+        ws_limiter.sweep()
 
 
 if __name__ == "__main__":

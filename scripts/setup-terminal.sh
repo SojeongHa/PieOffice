@@ -13,7 +13,7 @@ WRAPPER_DIR="$HOME/.local/bin"
 CLIENT_P12_PASSWORD="pieoffice"  # Password for .p12 import on iPhone
 
 # ---------------------------------------------------------------------------
-# Revoke mode
+# Revoke / regen modes
 # ---------------------------------------------------------------------------
 if [[ "${1:-}" == "--revoke" ]]; then
     echo "=== Revoking all client certificates ==="
@@ -21,6 +21,13 @@ if [[ "${1:-}" == "--revoke" ]]; then
     echo "  Removed client certificates."
     echo "  Re-run without --revoke to generate new ones."
     exit 0
+fi
+
+REGEN_SERVER=false
+if [[ "${1:-}" == "--regen-server" ]]; then
+    REGEN_SERVER=true
+    echo "=== Regenerating server certificate (new IPs) ==="
+    rm -f "$TLS_DIR/server-cert.pem" "$TLS_DIR/server-key.pem"
 fi
 
 echo "=== Pie Office Terminal Setup (mTLS) ==="
@@ -51,9 +58,29 @@ echo "[2/4] Server certificate..."
 LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || echo "192.168.1.1")
 echo "  LAN IP detected: $LAN_IP"
 
+# Detect Tailscale IP (if installed and running)
+# Try default socket first, then user-local socket (homebrew userspace mode)
+TAILSCALE_IP=""
+if command -v tailscale &>/dev/null; then
+    TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || true)
+    if [ -z "$TAILSCALE_IP" ] && [ -S "$HOME/.tailscale/tailscaled.sock" ]; then
+        TAILSCALE_IP=$(tailscale --socket="$HOME/.tailscale/tailscaled.sock" ip -4 2>/dev/null || true)
+    fi
+    if [ -n "$TAILSCALE_IP" ]; then
+        echo "  Tailscale IP detected: $TAILSCALE_IP"
+    fi
+fi
+
 if [ -f "$TLS_DIR/server-cert.pem" ]; then
     echo "  Already exists: $TLS_DIR/server-cert.pem"
 else
+    # Build SAN list
+    SAN="IP:$LAN_IP,IP:127.0.0.1,DNS:localhost"
+    if [ -n "$TAILSCALE_IP" ]; then
+        SAN="$SAN,IP:$TAILSCALE_IP"
+    fi
+    echo "  SAN: $SAN"
+
     # Generate server key + CSR
     openssl req -newkey rsa:2048 -nodes \
         -keyout "$TLS_DIR/server-key.pem" \
@@ -65,7 +92,7 @@ else
     cat > "$TLS_DIR/server-ext.cnf" <<EXTEOF
 authorityKeyIdentifier=keyid,issuer
 basicConstraints=CA:FALSE
-subjectAltName=IP:$LAN_IP,IP:127.0.0.1,DNS:localhost
+subjectAltName=$SAN
 EXTEOF
 
     openssl x509 -req \
@@ -157,6 +184,17 @@ echo "  2. Start Claude via tmux wrapper:"
 echo "     claude-tmux"
 echo ""
 echo "  3. On your iPhone (with client cert installed), open:"
-echo "     https://$LAN_IP:10317/terminal"
+if [ -n "$TAILSCALE_IP" ]; then
+echo "     Same WiFi:  https://$LAN_IP:10316/terminal"
+echo "     Any network: https://$TAILSCALE_IP:10316/terminal  (via Tailscale)"
+else
+echo "     https://$LAN_IP:10316/terminal"
+fi
 echo ""
 echo "  No token needed — mTLS authenticates your device automatically."
+echo ""
+if [ -z "$TAILSCALE_IP" ]; then
+echo "  Tip: Install Tailscale for cross-network access:"
+echo "     brew install tailscale"
+echo "     Then re-run: ./setup-terminal.sh --regen-server"
+fi
