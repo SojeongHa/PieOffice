@@ -69,45 +69,36 @@ grep 'alias claude=' ~/.zshrc && echo "OK"
 
 ### Step 3: Generate mTLS Certificates
 
-Run the setup script:
+Run the setup script, then generate the signed `.mobileconfig` bundle:
 
 ```bash
 cd ~/Documents/workspace/PieOffice && ./scripts/setup-terminal.sh
+cd ~/Documents/workspace/PieOffice && ./scripts/generate-mobileconfig.sh
 ```
 
 If certificates already exist, inform the user and ask whether to regenerate. Regenerating revokes existing iPhone certificates.
 
 If the user wants to regenerate:
 ```bash
-cd ~/Documents/workspace/PieOffice && ./scripts/setup-terminal.sh --revoke && ./scripts/setup-terminal.sh
+cd ~/Documents/workspace/PieOffice && ./scripts/setup-terminal.sh --revoke && ./scripts/setup-terminal.sh && ./scripts/generate-mobileconfig.sh
 ```
 
 ### Step 4: iPhone Certificate Installation Guide
 
-Walk the user through installing certificates on their iPhone. **Order matters** — CA first, then client cert.
+The `.mobileconfig` file bundles CA + client certificate in a single signed profile. Only one file to install.
 
 Open the certificate directory in Finder for the user:
 ```bash
 open ~/.pieoffice-tls/
 ```
 
-**Part A: Install CA certificate (makes client cert show as "signed")**
-
-1. AirDrop `ca.pem` to iPhone
+1. AirDrop `PieOffice.mobileconfig` to iPhone
 2. On iPhone: Settings → General → VPN & Device Management
-3. Tap "Profile Downloaded" → Install "PieOffice CA"
+3. Tap "Profile Downloaded" → Install the "PieOffice Remote Terminal" profile
 4. Go to Settings → General → About → Certificate Trust Settings
 5. Toggle ON "PieOffice CA" under "Enable Full Trust For Root Certificates"
 
-**Part B: Install client certificate**
-
-1. AirDrop `client.p12` to iPhone
-2. On iPhone: Settings → General → VPN & Device Management
-3. Tap "Profile Downloaded" → Install
-4. Enter password: `pieoffice`
-5. Profile should show as **signed by "PieOffice CA"**
-
-Ask the user to confirm they have completed both installations before proceeding.
+Ask the user to confirm they have completed the installation before proceeding.
 
 ### Step 5: Test Connection
 
