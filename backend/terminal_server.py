@@ -43,6 +43,23 @@ def static_files(filename):
     return send_from_directory(os.path.join(PROJECT_ROOT, "frontend"), filename)
 
 
+# Serve Pie Office frontend assets for the embedded office view
+@terminal_app.route("/office")
+def office_page():
+    return send_from_directory(os.path.join(PROJECT_ROOT, "frontend"), "index.html")
+
+
+@terminal_app.route("/office/static/<path:filename>")
+def office_static(filename):
+    return send_from_directory(os.path.join(PROJECT_ROOT, "frontend"), filename)
+
+
+@terminal_app.route("/office/theme/<path:filename>")
+def office_theme(filename):
+    theme_dir = os.path.join(PROJECT_ROOT, "theme", "default")
+    return send_from_directory(theme_dir, filename)
+
+
 def _get_peer_cert():
     """Extract peer certificate from the current request's SSL socket.
     werkzeug doesn't expose this via WSGI environ, so we dig into the socket."""
@@ -100,6 +117,23 @@ def terminal_sessions():
 def terminal_ws(ws, session_name):
     """WebSocket endpoint for terminal I/O relay."""
     handle_terminal_ws(ws, session_name, session_tokens)
+
+
+@terminal_app.route("/restore-size", methods=["POST"])
+def restore_size():
+    """Restore tmux window size after phone disconnect.
+    Tells tmux to re-fit to the laptop client's size."""
+    auth = request.headers.get("Authorization", "")
+    tok = auth.removeprefix("Bearer ").strip()
+    if not session_tokens.validate(tok):
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    session = data.get("session", "")
+    if session:
+        # Kill the web-* grouped session so tmux resizes back to laptop
+        import subprocess as sp
+        sp.run(["tmux", "run-shell", "-t", session, "true"], capture_output=True, timeout=2)
+    return jsonify({"ok": True})
 
 
 @terminal_app.route("/health")

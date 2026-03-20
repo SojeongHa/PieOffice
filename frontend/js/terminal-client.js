@@ -138,13 +138,19 @@
   // ── Sidebar toggle (mobile) ───────────────────────────
 
   window.toggleSidebar = function () {
-    document.getElementById("sidebar").classList.toggle("open");
-    document.getElementById("sidebar-overlay").classList.toggle("open");
+    var sidebar = document.getElementById("sidebar");
+    var overlay = document.getElementById("sidebar-overlay");
+    var toggle = document.getElementById("sidebar-toggle");
+    sidebar.classList.toggle("open");
+    overlay.classList.toggle("open");
+    // Hide hamburger button when sidebar is open
+    toggle.style.display = sidebar.classList.contains("open") ? "none" : "flex";
   };
 
   function closeSidebarOnMobile() {
     document.getElementById("sidebar").classList.remove("open");
     document.getElementById("sidebar-overlay").classList.remove("open");
+    document.getElementById("sidebar-toggle").style.display = "";
   }
 
   // ── Terminal Connection ────────────────────────────────
@@ -166,7 +172,8 @@
     document.getElementById("session-title").textContent = sessionName;
     setStatus("connecting", "Connecting...");
 
-    document.getElementById("empty-state").style.display = "none";
+    // Hide office, show terminal
+    document.getElementById("office-frame").style.display = "none";
     var termContainer = document.getElementById("terminal-container");
     termContainer.style.display = "block";
     termContainer.innerHTML = "";
@@ -244,6 +251,11 @@
     window.removeEventListener("resize", handleResize);
     window.addEventListener("resize", handleResize);
 
+    // iOS keyboard resize — use visualViewport API
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", handleResize);
+    }
+
     term.onResize(function (size) {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "resize", cols: size.cols, rows: size.rows }));
@@ -251,8 +263,61 @@
     });
   }
 
+  // ── Disconnect ─────────────────────────────────────────
+
+  window.disconnectSession = function () {
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
+    var sessionToRestore = currentSession;
+    currentSession = null;
+
+    if (ws) {
+      ws.close();
+      ws = null;
+    }
+    if (term) {
+      term.dispose();
+      term = null;
+      fitAddon = null;
+    }
+
+    // Hide terminal, show office
+    document.getElementById("terminal-header").style.display = "none";
+    document.getElementById("terminal-container").style.display = "none";
+    document.getElementById("terminal-container").innerHTML = "";
+    document.getElementById("office-frame").style.display = "block";
+
+    // Re-render session list to remove active state
+    if (lastSessionsJson) {
+      renderSessionList(JSON.parse(lastSessionsJson));
+    }
+
+    // Restore tmux window size for laptop (tell server to resize back)
+    if (sessionToRestore) {
+      fetch(location.origin + "/restore-size", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ session: sessionToRestore }),
+      }).catch(function () {});
+    }
+  };
+
   function handleResize() {
-    if (fitAddon) fitAddon.fit();
+    if (fitAddon) {
+      // Use visualViewport height for iOS keyboard
+      if (window.visualViewport) {
+        var container = document.getElementById("terminal-container");
+        var header = document.getElementById("terminal-header");
+        var headerH = header ? header.offsetHeight : 0;
+        container.style.height = (window.visualViewport.height - headerH) + "px";
+      }
+      fitAddon.fit();
+    }
   }
 
   function setStatus(state, text) {
@@ -264,6 +329,8 @@
 
   function scheduleReconnect(sessionName) {
     if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    // Only auto-reconnect if still the active session (not manually disconnected)
+    if (!currentSession) return;
     reconnectTimeout = setTimeout(function () {
       if (currentSession === sessionName) connectSession(sessionName);
     }, 3000);
