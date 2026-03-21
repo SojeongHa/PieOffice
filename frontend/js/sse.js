@@ -59,6 +59,7 @@ class SSEClient {
     this._source.onopen = () => {
       console.log("[SSE] Connected to", this.url);
       this._backoff = 1000; // reset backoff on successful connection
+      this._emit("_open", null);
     };
 
     this._source.onerror = () => {

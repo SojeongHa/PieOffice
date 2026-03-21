@@ -234,6 +234,28 @@ def clear_instance_alert(session_id: str) -> dict | None:
         return dict(instance)
 
 
+def count_pending_alerts() -> int:
+    """Return the number of instances with an active alert."""
+    with _lock:
+        return sum(1 for inst in _instances.values() if inst.get("alert_type") is not None)
+
+
+def clear_idle_alerts() -> list[dict]:
+    """Clear all idle_prompt alerts (user has seen them).
+
+    Returns list of cleared instance dicts (for SSE broadcast).
+    """
+    cleared = []
+    with _lock:
+        for _sid, inst in _instances.items():
+            if inst.get("alert_type") == "idle_prompt":
+                inst["alert_type"] = None
+                inst["alert_message"] = None
+                inst["alert_at"] = None
+                cleared.append(dict(inst))
+    return cleared
+
+
 def sweep_stale_instances() -> list[str]:
     """Remove instances whose last_event exceeds INSTANCE_SLOT_TIMEOUT.
 

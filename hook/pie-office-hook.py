@@ -408,6 +408,18 @@ def handle_event(event_data):
                 "cwd": cwd,
             })
 
+    elif hook_event == "Stop":
+        # Claude finished its turn — clear any pending alert for this session
+        send_to_server({
+            "event": "agent_update",
+            "agent_id": "main",
+            "agent_name": "Leader",
+            "state": "idle",
+            "detail": "",
+            "session_id": session_id,
+            "cwd": cwd,
+        })
+
     elif hook_event == "TaskCompleted":
         send_to_server({
             "event": "agent_update",
