@@ -1,6 +1,6 @@
 ---
 name: onboard-remote
-description: Set up remote terminal access from iPhone to Mac. Installs tmux, Tailscale VPN, generates mTLS certificates, configures claude wrapper, and walks through iPhone setup step by step. Supports both LAN-only and cross-network (Tailscale) modes.
+description: Set up remote terminal access from iPhone to Mac. Installs tmux, generates mTLS certificates, configures claude wrapper, and walks through iPhone setup step by step. Supports WiFi-only and cross-network (Tailscale) modes, with optional Wake-on-LAN setup.
 ---
 
 # Onboard Remote Terminal
@@ -31,7 +31,7 @@ cd ~/Documents/workspace/PieOffice && source venv/bin/activate && pip show flask
 # Check LAN IP
 ipconfig getifaddr en0 2>/dev/null || echo "NO_WIFI"
 
-# Check Tailscale
+# Check Tailscale (just detect, don't require)
 which tailscale 2>/dev/null && tailscale status 2>/dev/null | head -1 || echo "NOT_INSTALLED"
 ```
 
@@ -39,16 +39,20 @@ Report what is installed and what is missing. Install missing items:
 
 - **tmux missing**: `brew install tmux`
 - **flask-sock missing**: `cd ~/Documents/workspace/PieOffice && source venv/bin/activate && pip install flask-sock`
-- **No WiFi**: Warn the user — WiFi is required for LAN access (Tailscale can work without WiFi via cellular)
+- **No WiFi**: Warn the user — WiFi is required for all modes
 
 ### Step 2: Ask Network Mode
 
 Ask the user which access mode they need:
 
-1. **LAN only** — same WiFi only, simplest setup
-2. **Tailscale (recommended)** — access from any network (LTE, different WiFi, etc.)
+1. **WiFi only (default)** — same WiFi only, simplest setup. Start with `./dev.sh --lan`
+2. **Cross-network (Tailscale)** — access from any network (LTE, different WiFi, etc.). Start with `./dev.sh --lan --tailscale`
 
-If the user chooses Tailscale (or already expressed interest in cross-network access), proceed with Step 2a. Otherwise skip to Step 3.
+Explain the trade-offs:
+- **WiFi only**: no extra software, works when phone and Mac are on the same WiFi. Mac can sleep normally when not in use.
+- **Tailscale**: works from anywhere, but Mac must be awake (use `--no-sleep` flag for away-from-desk use).
+
+If the user chooses Tailscale, proceed with Step 2a. Otherwise skip to Step 2b.
 
 #### Step 2a: Install and Configure Tailscale
 
@@ -74,6 +78,39 @@ Note: The App Store version manages the daemon automatically — no `sudo tailsc
 4. Verify both devices appear in `tailscale status`
 
 Ask the user to confirm both devices are connected before proceeding.
+
+#### Step 2b: Ask About Wake-on-LAN (WiFi only)
+
+Ask the user: "Mac이 잠들어있을 때 iPhone에서 깨우는 Wake-on-LAN 설정할까요? (같은 WiFi에서만 동작)"
+
+If yes, guide them through WoL setup:
+
+1. **Mac setting**: System Settings → Energy → Turn ON "Wake for network access"
+
+2. **Get Mac info** for the WoL app:
+```bash
+# MAC address
+ifconfig en0 | grep ether
+# LAN IP
+ipconfig getifaddr en0
+```
+
+3. **iPhone WoL app**: Install any free WoL app from App Store (e.g., "Wake Me Up - Wake-on-LAN") and register the Mac:
+
+| Field | Value |
+|-------|-------|
+| MAC address | (from `ifconfig en0 \| grep ether`) |
+| Broadcast | `<subnet>.255` (e.g., `10.0.0.255`) |
+| Ping address | (from `ipconfig getifaddr en0`) |
+| Port | `9` (default) |
+
+4. **Usage flow**: Open WoL app → wake Mac → wait a few seconds → open Pie Office terminal URL
+
+**Important notes:**
+- WoL only works on the same WiFi network. It does NOT work over LTE or different WiFi.
+- If the router assigns a new IP to the Mac, update the ping address in the WoL app. For a permanent fix, set a DHCP reservation in the router admin page.
+
+If the user declines WoL, skip — it's optional.
 
 ### Step 3: Ask Claude Wrapper Preference
 
@@ -148,24 +185,22 @@ Ask the user to confirm they have completed the installation before proceeding.
 
 ### Step 6: Test Connection
 
-Tell the user to open a **separate terminal tab** and run:
+Tell the user to open a **separate terminal tab** and run the appropriate command based on their chosen mode:
 
 ```bash
+# WiFi only
 cd ~/Documents/workspace/PieOffice && ./dev.sh --lan
-```
 
-Then get the connection IP:
-```bash
-# LAN IP (same WiFi)
-ipconfig getifaddr en0
+# Cross-network (Tailscale)
+cd ~/Documents/workspace/PieOffice && ./dev.sh --lan --tailscale
 
-# Tailscale IP (any network)
-tailscale ip -4
+# Cross-network + keep Mac awake (for away-from-desk use)
+cd ~/Documents/workspace/PieOffice && ./dev.sh --lan --tailscale --no-sleep
 ```
 
 Tell the user to test based on their setup:
 
-- **LAN**: `https://<LAN_IP>:10316/` (same WiFi only)
+- **WiFi only**: `https://<LAN_IP>:10316/` (same WiFi only)
 - **Tailscale**: `https://<TAILSCALE_IP>:10316/` (any network — try from LTE to verify)
 
 Expected behavior:
@@ -182,16 +217,19 @@ Wait for the user to confirm it works.
 
 Print the final usage guide covering:
 
-- How to start Pie Office in LAN mode: `./dev.sh --lan` (in a separate terminal tab)
+- How to start Pie Office based on chosen mode:
+  - WiFi only: `./dev.sh --lan`
+  - Cross-network: `./dev.sh --lan --tailscale`
+  - Away from desk: `./dev.sh --lan --tailscale --no-sleep`
 - How to start a Claude session: `claude-tmux` (or `claude` if alias was chosen)
-- Connection options:
+- Connection URLs:
   - Same WiFi: `https://<LAN_IP>:10316/`
-  - Any network (Tailscale): `https://<TAILSCALE_IP>:10316/`
+  - Tailscale: `https://<TAILSCALE_IP>:10316/` (only with `--tailscale`)
+- If WoL was set up: remind the usage flow (WoL app → wake Mac → wait → connect)
 - Security layers (explain briefly):
-  - **Tailscale VPN**: only authenticated devices can reach the server (no public port exposure)
   - **mTLS**: client certificate validates the specific device
+  - **Tailscale VPN** (if enabled): only authenticated devices can reach the server
   - **Rate limiter**: IP-based request throttling (30 HTTP req/min, 10 WS conn/min) as defense-in-depth
 - Certificate management:
   - `--revoke` to revoke client certs, re-run to regenerate
   - `--regen-server` to regenerate server cert (when IPs change or Tailscale added)
-- Optional iOS Shortcut for one-tap access: see `docs/ios-shortcut-setup.md`

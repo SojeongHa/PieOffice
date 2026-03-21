@@ -45,9 +45,8 @@ Pie Office is a pixel-art virtual office that visualizes Claude Code agent activ
 - `permission_prompt` and `idle_prompt` notifications become `instance_alert` SSE events with animated sprites (exclamation/question mark)
 - Non-notification events from the same `session_id` auto-clear alerts
 - Hook `Stop` event sends Leader to idle, triggering alert clear
-- **Caffeinate integration** — separate `CaffeinateManager` keeps Mac awake during pending alerts
-  - `idle_prompt` cleared on "seen" (phone fetch via `/alerts` or laptop sleep-wake ack via `/alerts/ack`)
-  - `permission_prompt` cleared by Stop hook (covers permission denial)
+- `idle_prompt` cleared on "seen" (phone fetch via `/alerts` or laptop sleep-wake ack via `/alerts/ack`)
+- `permission_prompt` cleared by Stop hook (covers permission denial)
 
 ### Web Terminal (iPhone Remote Access)
 - **asyncio + websockets + pty** server on port 10316 (separate process, NOT Flask thread)
@@ -59,7 +58,7 @@ Pie Office is a pixel-art virtual office that visualizes Claude Code agent activ
   - Scroll mode toggle with natural touch scrolling (5px per line)
   - Arrow up/down quick buttons
   - CSP-compliant event handlers (no inline `onclick`)
-- **Caffeinate** keeps Mac awake during active terminal sessions
+- **Caffeinate** keeps Mac awake during active phone terminal sessions (WebSocket-based, auto off on disconnect)
 - **Rate limiting** — IP-based sliding window (HTTP 30req/min, WS 10conn/min)
 - **`.mobileconfig` generator** for one-step iPhone certificate setup
 
@@ -83,7 +82,7 @@ Pie Office is a pixel-art virtual office that visualizes Claude Code agent activ
 - Language auto-detection with manual override
 
 ### Developer Experience
-- **`dev.sh`** — single entry point with port argument and `--lan` flag
+- **`dev.sh`** — single entry point: `[port]`, `--lan` (WiFi), `--tailscale` (cross-network), `--no-sleep` (caffeinate)
 - **Port convention:** 10317 (production), 10318 (Claude test)
 - **In-memory state only** — server restart = clean slate, no persistence layer to manage
 - **Tile editor** in `editor/` for tilemap authoring
@@ -117,8 +116,14 @@ iPhone (terminal.html) ←—WSS—→  Terminal server (terminal_server.py, por
 # Start on custom port
 ./dev.sh 10318
 
-# Start with LAN/phone access
-LAN_MODE=1 ./dev.sh
+# Start with WiFi phone access
+./dev.sh --lan
+
+# Start with Tailscale cross-network access
+./dev.sh --lan --tailscale
+
+# Keep Mac awake while server runs (for away-from-desk use)
+./dev.sh --lan --tailscale --no-sleep
 
 # Setup terminal for iPhone
 ./scripts/setup-terminal.sh

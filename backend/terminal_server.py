@@ -198,7 +198,6 @@ async def handle_terminal(websocket, session_name):
         return
 
     await websocket.send(json.dumps({"type": "connected", "session": session_name}))
-    caffeinate.acquire()
 
     # Fork a child process with a pty — safe here because we're in asyncio, not Flask threads
     child_pid, master_fd = pty.fork()
@@ -209,6 +208,9 @@ async def handle_terminal(websocket, session_name):
         os.environ["LC_ALL"] = "en_US.UTF-8"
         os.execlp("tmux", "tmux", "attach-session", "-t", session_name)
         os._exit(1)
+
+    # Prevent Mac sleep while phone is connected (acquire after fork succeeds)
+    caffeinate.acquire()
 
     print(f"[Terminal] Connected to '{session_name}' (child={child_pid})", file=sys.stderr)
 

@@ -72,6 +72,3 @@ TERMINAL_TLS_KEY: str = os.path.join(TERMINAL_TLS_DIR, "server-key.pem")
 
 # Session token TTL (seconds). Issued after mTLS handshake, used for WebSocket auth.
 TERMINAL_SESSION_TOKEN_TTL: int = int(os.environ.get("PIE_TERMINAL_SESSION_TTL", 3600))
-
-# Seconds of inactivity before caffeinate is released (Mac can sleep again).
-TERMINAL_IDLE_TIMEOUT: int = int(os.environ.get("PIE_TERMINAL_IDLE_TIMEOUT", 300))
