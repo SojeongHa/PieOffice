@@ -195,6 +195,6 @@ echo "  No token needed — mTLS authenticates your device automatically."
 echo ""
 if [ -z "$TAILSCALE_IP" ]; then
 echo "  Tip: Install Tailscale for cross-network access:"
-echo "     brew install tailscale"
+echo "     App Store → Tailscale (or: open https://apps.apple.com/app/tailscale/id1475387142)"
 echo "     Then re-run: ./setup-terminal.sh --regen-server"
 fi

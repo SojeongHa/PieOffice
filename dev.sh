@@ -12,6 +12,24 @@ for arg in "$@"; do
 done
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# LAN mode: check Tailscale is running
+if [ -n "$LAN_MODE" ]; then
+    if ! tailscale status >/dev/null 2>&1; then
+        echo ""
+        echo "⚠  Tailscale is not running! LAN mode will not work for phone access."
+        echo "   Start it: open -a Tailscale (or App Store → Tailscale)"
+        echo ""
+        # Background warning loop until Tailscale comes up
+        (while ! tailscale status >/dev/null 2>&1; do
+            echo "⚠  Tailscale still not running — phone access unavailable"
+            sleep 30
+        done
+        echo "✓ Tailscale connected: $(tailscale ip -4 2>/dev/null)") &
+    else
+        echo "Tailscale: $(tailscale ip -4 2>/dev/null)"
+    fi
+fi
+
 # Kill existing process on port
 lsof -ti:"$PORT" 2>/dev/null | xargs kill -9 2>/dev/null
 
