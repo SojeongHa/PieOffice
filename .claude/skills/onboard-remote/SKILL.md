@@ -52,18 +52,20 @@ If the user chooses Tailscale (or already expressed interest in cross-network ac
 
 #### Step 2a: Install and Configure Tailscale
 
-**Mac setup:**
+**Mac setup (App Store recommended):**
+
+1. App Store → search "Tailscale" → install (or `open https://apps.apple.com/app/tailscale/id1475387142`)
+2. Open the Tailscale app from Applications / menu bar
+3. Sign in via browser when prompted
+4. Click "Connect" in the menu bar icon
+
+Verify:
 ```bash
-brew install tailscale
-sudo tailscaled install-system-daemon
-tailscale up
+tailscale status | head -5
 tailscale ip -4  # Note the 100.x.x.x IP
 ```
 
-Wait for the user to complete the browser login flow. Verify:
-```bash
-tailscale status | head -5
-```
+Note: The App Store version manages the daemon automatically — no `sudo tailscaled` or `brew install` needed.
 
 **iPhone setup** — instruct the user:
 1. App Store → search "Tailscale" → install
