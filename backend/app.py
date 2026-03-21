@@ -30,6 +30,7 @@ from state import (
     append_hook_log,
     clear_agents,
     clear_instance_alert,
+    count_pending_alerts,
     get_agent,
     get_agents,
     get_hook_log,
@@ -42,10 +43,12 @@ from state import (
     set_instance_alert,
     sweep_idle_nonresident,
     sweep_stale_agents,
+    clear_idle_alerts,
     sweep_stale_instances,
     sweep_stale_subagents,
     track_instance,
 )
+from terminal import CaffeinateManager
 
 # ---------------------------------------------------------------------------
 # Config
@@ -53,6 +56,11 @@ from state import (
 from config import LEAVE_DELAY
 
 PORT = int(os.environ.get("PORT", 10317))
+
+# Caffeinate manager — keeps Mac awake while permission/idle alerts are pending
+_alert_caffeinate = CaffeinateManager(idle_timeout=60)
+_alert_caffeinate_active = False
+_alert_caffeinate_lock = threading.Lock()
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEBUG = os.environ.get("PIE_OFFICE_DEBUG", "").lower() in ("1", "true")
 
@@ -99,6 +107,25 @@ INSTANCE_SLOT_COUNT = len(_theme_config.get("instance_slots", []))
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
+def _sync_alert_caffeinate():
+    """Start/stop caffeinate based on pending alert count.
+
+    Thread-safe: guarded by _alert_caffeinate_lock to prevent double
+    acquire/release from concurrent Flask request threads.
+    """
+    global _alert_caffeinate_active
+    with _alert_caffeinate_lock:
+        pending = count_pending_alerts()
+        if pending > 0 and not _alert_caffeinate_active:
+            _alert_caffeinate.acquire()
+            _alert_caffeinate_active = True
+            print(f"[Alert] caffeinate ON — {pending} pending alert(s)", file=sys.stderr)
+        elif pending == 0 and _alert_caffeinate_active:
+            _alert_caffeinate.release()
+            _alert_caffeinate_active = False
+            print("[Alert] caffeinate OFF — no pending alerts", file=sys.stderr)
+
+
 app = Flask(__name__, static_folder=None)
 CORS(app, origins=[
     "http://localhost:10317", "http://localhost:10318",
@@ -141,6 +168,41 @@ def health():
 @app.route("/state")
 def state():
     return jsonify({"agents": get_agents(), "log": get_hook_log(20), "instances": get_instances()})
+
+
+@app.route("/alerts")
+def alerts():
+    """Lightweight endpoint: only instance alerts (for terminal server proxy).
+
+    Also clears idle_prompt alerts on fetch — the phone user has seen them.
+    """
+    instances = get_instances()
+    result = {}
+    for sid, inst in instances.items():
+        if inst.get("alert_type"):
+            result[sid] = {
+                "cwd": inst.get("cwd", ""),
+                "alert_type": inst["alert_type"],
+                "alert_message": inst.get("alert_message", ""),
+            }
+    # Phone user has seen all alerts — clear idle_prompts
+    cleared = clear_idle_alerts()
+    for inst in cleared:
+        announcer.announce(inst, event="instance_alert_clear")
+    if cleared:
+        _sync_alert_caffeinate()
+    return jsonify(result)
+
+
+@app.route("/alerts/ack", methods=["POST"])
+def alerts_ack():
+    """Acknowledge idle_prompt alerts (laptop UI has shown them after sleep wake)."""
+    cleared = clear_idle_alerts()
+    for inst in cleared:
+        announcer.announce(inst, event="instance_alert_clear")
+    if cleared:
+        _sync_alert_caffeinate()
+    return jsonify({"cleared": len(cleared)})
 
 
 @app.route("/stream")
@@ -224,7 +286,11 @@ def hook():
         if event_type != "instance_alert":
             cleared = clear_instance_alert(session_id)
             if cleared:
+                print(f"[Alert] CLEARED by event={event_type} session={session_id[:12]}", file=sys.stderr)
                 announcer.announce(cleared, event="instance_alert_clear")
+                _sync_alert_caffeinate()
+        else:
+            print(f"[Alert] SET event={event_type} session={session_id[:12]} type={payload.get('notification_type')}", file=sys.stderr)
 
     # Cancel any pending leave timer when the agent gets new activity
     if event_type not in ("SubagentStop", "shutdown", "agent_leave", "team_delete"):
@@ -281,6 +347,7 @@ def hook():
             inst = set_instance_alert(session_id_val, notification_type, message)
             if inst:
                 announcer.announce(inst, event="instance_alert")
+                _sync_alert_caffeinate()
 
     elif event_type == "team_delete":
         # All agents leave immediately
@@ -445,6 +512,8 @@ def _stale_sweep_loop():
             stale_instances = sweep_stale_instances()
             for sid in stale_instances:
                 announcer.announce({"session_id": sid}, event="instance_slot_release")
+            if stale_instances:
+                _sync_alert_caffeinate()
             # Sweep stale SSE connections to prevent file descriptor leaks
             announcer.sweep_stale_listeners()
         except Exception as e:

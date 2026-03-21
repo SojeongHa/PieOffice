@@ -115,22 +115,42 @@
       infoEl.appendChild(nameEl);
       infoEl.appendChild(cwdEl);
 
+      // Alert message line + badge for permission_prompt / idle_prompt
+      if (s.alert_type) {
+        var msgEl = document.createElement("div");
+        msgEl.className = "session-alert-msg " + s.alert_type;
+        msgEl.textContent = s.alert_message || s.alert_type;
+        infoEl.appendChild(msgEl);
+        item.classList.add("has-alert");
+      }
+
       item.appendChild(statusDot);
       item.appendChild(infoEl);
+
+      if (s.alert_type) {
+        var badge = document.createElement("span");
+        badge.className = "session-alert " + s.alert_type;
+        badge.textContent = s.alert_type === "permission_prompt" ? "!" : "?";
+        item.appendChild(badge);
+      }
+
       list.appendChild(item);
     });
   }
 
   // ── Sidebar ───────────────────────────────────────────
 
-  window.toggleSidebar = function () {
+  function toggleSidebar() {
     var sidebar = document.getElementById("sidebar");
     var overlay = document.getElementById("sidebar-overlay");
     var toggle = document.getElementById("sidebar-toggle");
     sidebar.classList.toggle("open");
     overlay.classList.toggle("open");
     toggle.style.display = sidebar.classList.contains("open") ? "none" : "flex";
-  };
+  }
+
+  document.getElementById("sidebar-toggle").addEventListener("click", toggleSidebar);
+  document.getElementById("sidebar-overlay").addEventListener("click", toggleSidebar);
 
   function closeSidebarOnMobile() {
     document.getElementById("sidebar").classList.remove("open");
@@ -235,7 +255,7 @@
 
   // ── Disconnect ─────────────────────────────────────────
 
-  window.disconnectSession = function () {
+  function disconnectSession() {
     if (reconnectTimeout) { clearTimeout(reconnectTimeout); reconnectTimeout = null; }
     currentSession = null;
     if (ws) { ws.close(); ws = null; }
@@ -248,56 +268,65 @@
     document.getElementById("empty-state").style.display = "flex";
 
     if (lastSessionsJson) renderSessionList(JSON.parse(lastSessionsJson));
-  };
+  }
 
-  // ── Quick Actions (exposed globally for onclick) ───────
+  // ── Quick Actions ────────────────────────────────────
 
-  // Expose on window so HTML onclick can access
-  window._termSend = function (data) {
+  function termSend(data) {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "input", data: data }));
     }
-  };
+  }
 
-  window._termSendInput = function () {
+  function termSendInput() {
     var input = document.getElementById("term-input");
     if (!input) return;
     var text = input.value;
     if (text) {
-      window._termSend(text + "\r");
+      termSend(text + "\r");
     }
     input.value = "";
     input.focus();
-  };
+  }
 
-  window._termClearInput = function () {
+  function termClearInput() {
     var input = document.getElementById("term-input");
     if (!input) return;
     input.value = "";
     input.focus();
-  };
+  }
 
   var scrollMode = false;
   var touchStartY = 0;
 
-  window._termToggleScroll = function () {
+  function termToggleScroll() {
     var btn = document.getElementById("btn-scroll-mode");
     if (!scrollMode) {
-      // Enter tmux scroll mode (start at current position, user scrolls with touch)
-      window._termSend("\x02[");
+      termSend("\x02[");
       scrollMode = true;
       btn.textContent = "Exit Scroll";
       btn.style.background = "var(--bg-sidebar-active)";
       btn.style.color = "#fff";
     } else {
-      // Exit tmux scroll mode
-      window._termSend("q");
+      termSend("q");
       scrollMode = false;
       btn.textContent = "Scroll";
       btn.style.background = "";
       btn.style.color = "";
     }
-  };
+  }
+
+  // Bind all quick action buttons (CSP blocks inline handlers)
+  document.getElementById("disconnect-btn").addEventListener("click", disconnectSession);
+  document.getElementById("btn-send").addEventListener("touchend", termSendInput);
+  document.getElementById("btn-scroll-mode").addEventListener("touchend", termToggleScroll);
+  document.getElementById("btn-up").addEventListener("touchend", function () { termSend("\x1b[A"); });
+  document.getElementById("btn-down").addEventListener("touchend", function () { termSend("\x1b[B"); });
+  document.getElementById("btn-1").addEventListener("touchend", function () { termSend("1"); });
+  document.getElementById("btn-2").addEventListener("touchend", function () { termSend("2"); });
+  document.getElementById("btn-3").addEventListener("touchend", function () { termSend("3"); });
+  document.getElementById("btn-clear").addEventListener("touchend", termClearInput);
+  document.getElementById("btn-enter").addEventListener("touchend", function () { termSend("\r"); });
 
   // Touch scroll when in scroll mode — send arrow keys to tmux
   document.addEventListener("touchstart", function (e) {
@@ -312,7 +341,7 @@
     if (Math.abs(dy) > 5) {
       var key = dy > 0 ? "\x1b[B" : "\x1b[A";
       var lines = Math.floor(Math.abs(dy) / 5);
-      for (var i = 0; i < lines; i++) window._termSend(key);
+      for (var i = 0; i < lines; i++) termSend(key);
       touchStartY = e.touches[0].clientY;
       e.preventDefault();
     }
@@ -321,7 +350,7 @@
   document.getElementById("term-input").addEventListener("keydown", function (e) {
     if (e.key === "Enter") {
       e.preventDefault();
-      window._termSendInput();
+      termSendInput();
     }
   });
 

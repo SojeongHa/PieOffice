@@ -22,6 +22,9 @@ import struct
 import sys
 import termios
 
+import urllib.request
+import urllib.error
+
 import websockets
 from websockets.http11 import Response
 
@@ -34,6 +37,8 @@ from terminal import list_tmux_sessions, caffeinate
 from terminal_auth import SessionTokenStore
 
 TERMINAL_PORT = int(os.environ.get("TERMINAL_PORT", 10316))
+PIE_OFFICE_PORT = int(os.environ.get("PORT", 10317))
+PIE_OFFICE_ALERTS_URL = f"http://127.0.0.1:{PIE_OFFICE_PORT}/alerts"
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND_ROOT = os.path.realpath(os.path.join(PROJECT_ROOT, "frontend"))
 
@@ -62,6 +67,33 @@ HTTP_REASONS = {200: "OK", 401: "Unauthorized", 403: "Forbidden", 404: "Not Foun
 
 def _reason(status: int) -> str:
     return HTTP_REASONS.get(status, "Unknown")
+
+
+# ---------------------------------------------------------------------------
+# Pie Office alert proxy — fetch instance alerts from backend (localhost)
+# ---------------------------------------------------------------------------
+
+def _fetch_pie_office_alerts() -> dict[str, dict]:
+    """Fetch pending alerts from Pie Office backend, keyed by cwd.
+
+    Returns {cwd: {"type": ..., "message": ...}} for instances with active alerts.
+    Falls back to empty dict on any error (Pie Office down, etc.).
+    """
+    try:
+        req = urllib.request.Request(PIE_OFFICE_ALERTS_URL)
+        resp = urllib.request.urlopen(req, timeout=0.5)
+        data = json.loads(resp.read())
+        alerts = {}
+        for _sid, inst in data.items():
+            cwd = inst.get("cwd", "")
+            if cwd:
+                alerts[cwd] = {
+                    "type": inst["alert_type"],
+                    "message": inst.get("alert_message", ""),
+                }
+        return alerts
+    except Exception:
+        return {}
 
 
 # ---------------------------------------------------------------------------
@@ -112,12 +144,16 @@ async def handle_http(path, headers, *, has_client_cert: bool = False):
         if not session_tokens.validate(token):
             return 401, [("Content-Type", "application/json")], b'{"error":"unauthorized"}'
         sessions = list_tmux_sessions()
-        data = {
-            "sessions": [
-                {"name": s.name, "windows": s.windows, "attached": s.attached, "cwd": s.cwd}
-                for s in sessions
-            ]
-        }
+        alerts_by_cwd = await asyncio.to_thread(_fetch_pie_office_alerts)
+        session_list = []
+        for s in sessions:
+            entry = {"name": s.name, "windows": s.windows, "attached": s.attached, "cwd": s.cwd}
+            alert = alerts_by_cwd.get(s.cwd)
+            if alert:
+                entry["alert_type"] = alert["type"]
+                entry["alert_message"] = alert["message"]
+            session_list.append(entry)
+        data = {"sessions": session_list}
         return 200, [("Content-Type", "application/json")], json.dumps(data).encode()
 
     if clean_path == "/health":

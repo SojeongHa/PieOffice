@@ -150,7 +150,7 @@
     .session-status.attached { background: var(--green); }
     .session-status.detached { background: var(--text-muted); border: 1.5px solid var(--text-muted); background: transparent; }
 
-    .session-info { overflow: hidden; }
+    .session-info { overflow: hidden; flex: 1; min-width: 0; }
     .session-name {
       font-size: 14px;
       color: var(--text-primary);
@@ -164,6 +164,50 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    /* Alert message in session items */
+    .session-alert-msg {
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+    .session-alert-msg.permission_prompt { color: var(--red); }
+    .session-alert-msg.idle_prompt { color: var(--accent); }
+
+    /* Alert badges on session items */
+    .session-alert {
+      margin-left: auto;
+      flex-shrink: 0;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 800;
+      animation: alert-pulse 1.5s ease-in-out infinite;
+    }
+    .session-alert.permission_prompt {
+      background: var(--red);
+      color: #fff;
+    }
+    .session-alert.idle_prompt {
+      background: var(--accent);
+      color: #1a1a2e;
+    }
+    .session-item.has-alert {
+      background: rgba(224, 30, 90, 0.08);
+    }
+    .session-item.has-alert.active {
+      background: var(--bg-sidebar-active);
+    }
+    @keyframes alert-pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.15); opacity: 0.8; }
     }
 
     .no-sessions {
@@ -331,8 +375,8 @@
 
   <!-- Main Layout (shown after auth) -->
   <div id="main-layout">
-    <button id="sidebar-toggle" onclick="toggleSidebar()">&#9776;</button>
-    <div id="sidebar-overlay" onclick="toggleSidebar()"></div>
+    <button id="sidebar-toggle">&#9776;</button>
+    <div id="sidebar-overlay"></div>
 
     <div id="sidebar">
       <div id="sidebar-header">
@@ -351,24 +395,24 @@
             <span id="status-text"></span>
           </span>
         </div>
-        <button id="disconnect-btn" onclick="disconnectSession()">Disconnect</button>
+        <button id="disconnect-btn">Disconnect</button>
       </div>
       <div id="empty-state">Select a session from the sidebar</div>
       <div id="terminal-container"></div>
       <div id="quick-actions" style="display:none;">
         <div id="input-bar">
           <input type="text" id="term-input" placeholder="Type here (IME supported)" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
-          <button ontouchend="window._termSendInput()">Send</button>
+          <button id="btn-send">Send</button>
         </div>
         <div id="action-buttons">
-          <button id="btn-scroll-mode" ontouchend="window._termToggleScroll()">Scr</button>
-          <button ontouchend="window._termSend('\x1b[A')">&#9650;</button>
-          <button ontouchend="window._termSend('\x1b[B')">&#9660;</button>
-          <button ontouchend="window._termSend('1')">1</button>
-          <button ontouchend="window._termSend('2')">2</button>
-          <button ontouchend="window._termSend('3')">3</button>
-          <button ontouchend="window._termClearInput()">&#9003;</button>
-          <button ontouchend="window._termSend('\r')">&#9166;</button>
+          <button id="btn-scroll-mode">Scr</button>
+          <button id="btn-up">&#9650;</button>
+          <button id="btn-down">&#9660;</button>
+          <button id="btn-1">1</button>
+          <button id="btn-2">2</button>
+          <button id="btn-3">3</button>
+          <button id="btn-clear">&#9003;</button>
+          <button id="btn-enter">&#9166;</button>
         </div>
       </div>
     </div>

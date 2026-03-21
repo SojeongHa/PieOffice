@@ -442,6 +442,20 @@ class OfficeScene extends Phaser.Scene {
       }
     });
 
+    // After SSE reconnect (sleep wake), ack idle alerts after 10s
+    let ackTimer = null;
+    let hasConnectedOnce = false;
+    this.sse.on("_open", () => {
+      if (!hasConnectedOnce) {
+        hasConnectedOnce = true;
+        return;
+      }
+      if (ackTimer) clearTimeout(ackTimer);
+      ackTimer = setTimeout(() => {
+        fetch("/alerts/ack", { method: "POST" }).catch(() => {});
+      }, 10000);
+    });
+
     this.sse.connect();
   }
 
