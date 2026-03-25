@@ -13,27 +13,45 @@ SERVER_URL = os.environ.get("PIE_OFFICE_URL", "http://localhost:10317/hook")
 TIMEOUT = 3
 DEBUG = os.environ.get("PIE_OFFICE_DEBUG", "").lower() in ("1", "true")
 
+# Project root: hook/ lives one level below
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 def debug(msg):
     if DEBUG:
         print(f"[pie-office-hook] {msg}", file=sys.stderr)
 
 
-# Map Claude Code agent types to display names
-AGENT_TYPE_MAP = {
+def _load_local_config():
+    """Load config.local.json from project root (gitignored, personal overrides)."""
+    path = os.path.join(_PROJECT_ROOT, "config.local.json")
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+# Map Claude Code agent types to display names (base defaults — official Claude agents)
+_DEFAULT_AGENT_TYPE_MAP = {
     "general-purpose": "Leader",
-    "review-neutral": "Neutral",
-    "everything-claude-code": "ECC",
-    "feature-dev": "FeatureDev",
-    "review-advocate": "Advocate",
     "Explore": "Explorer",
     "Plan": "Planner",
-    "review-critic": "Critic",
+    "superpowers": "Superpowers",
+    "code-review": "Reviewer",
+    "code-simplifier": "Simplifier",
+    "everything-claude-code": "ECC",
 }
 
-# Alias agent types to resident agent IDs (share a character)
-AGENT_ALIAS_MAP = {
-    "everything-claude-code": "review-neutral",
+# Alias agent types to resident agent IDs (base defaults)
+_DEFAULT_AGENT_ALIAS_MAP = {
+    "code-review": "superpowers",
+    "code-simplifier": "everything-claude-code",
 }
+
+# Merge with config.local.json overrides
+_local_cfg = _load_local_config()
+AGENT_TYPE_MAP = {**_DEFAULT_AGENT_TYPE_MAP, **_local_cfg.get("agent_type_map", {})}
+AGENT_ALIAS_MAP = {**_DEFAULT_AGENT_ALIAS_MAP, **_local_cfg.get("agent_alias_map", {})}
 
 # Map tool usage to agent states
 TOOL_STATE_MAP = {

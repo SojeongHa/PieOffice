@@ -47,7 +47,7 @@ PieOffice/
 - State is **in-memory only** (dict + deque). No file persistence. Server restart = clean slate.
 - Character sprites are **128x128 frames** (scaled to 0.75x via `CONFIG.CHAR_SCALE`) on a **32x32 tile** grid.
 - Pathfinding is **4-directional** (no diagonals).
-- Agent map: base defaults in `theme/default/config.json` under `agent_map`. Personal overrides in `config.local.json` (gitignored) — backend deep-merges `agent_map` per-key at runtime via `/theme/config.json` endpoint. Only changed fields needed; unspecified fields inherit from base.
+- Agent map: base defaults in `theme/default/config.json` under `agent_map`. Personal overrides in `config.local.json` (gitignored) — backend deep-merges `agent_map` per-key at runtime via `/theme/config.json` endpoint. Only changed fields needed; unspecified fields inherit from base. Hook also reads `agent_type_map` and `agent_alias_map` from `config.local.json` for per-user agent type→display name and alias mappings.
 - Resident agents (`resident: true` in agent_map) spawn on page load; non-residents appear on hook events and are auto-removed after 60s idle.
 - Unmapped agents fall back to `robot` sprite with random pastel tint (Ditto style).
 - Tool events are routed to 4 characters: Explorer (Read/Grep/Glob/Bash/WebSearch/WebFetch + search-oriented MCP), Assistant (Write/Edit/NotebookEdit), Planner (Agent/TaskCreate/TaskUpdate), Leader (Skill/AskUserQuestion + non-search MCP).
