@@ -1,3 +1,51 @@
+# Pie Office v1.0.1
+
+**Release Date:** 2026-03-24
+**8 commits** | Terminal UX, caffeinate simplification, per-user character config
+
+---
+
+## Changes
+
+### Terminal UX
+- **Tab quick action button** — send Tab key to terminal from phone
+- **Clear button fix** — now sends Ctrl+U (kill line) to terminal instead of clearing the IME input field
+- **Smaller action buttons** — font-size and padding reduced to prevent layout overflow on narrow screens
+
+### Caffeinate Simplification
+- **Removed alert-based caffeinate** from Flask backend (`_sync_alert_caffeinate`, `count_pending_alerts`)
+- **WebSocket-only caffeinate** — `CaffeinateManager` simplified to pure ref-counting: starts on first phone connection, stops when all disconnect. No more idle timer.
+- **`caffeinate.acquire()` moved after fork** in terminal_server.py for correctness
+
+### dev.sh Flags
+- **`--tailscale`** — enables Tailscale cross-network access (implies `--lan`), with status check and background warning loop until Tailscale connects
+- **`--no-sleep`** — keeps Mac awake via `caffeinate -s` while server runs (auto-killed on exit)
+- Tailscale watch loop now properly killed on server exit
+
+### Per-User Character Distribution
+- **Hook reads `config.local.json`** for `agent_type_map` and `agent_alias_map` — per-user character customization without modifying shared git files
+- **Base defaults** include official Claude agents only (superpowers, code-review, code-simplifier, everything-claude-code)
+- **`/distribute-character` skill** now updates only `config.local.json`, not the hook
+- Malformed `config.local.json` now logs parse errors to stderr instead of silent failure
+
+### Tailscale Onboarding
+- **App Store install recommended** over brew in onboard-remote skill
+- **Wake-on-LAN guide** added for WiFi-only mode
+- WiFi-only vs cross-network trade-offs documented
+
+### Documentation Sync
+- Tool routing tables corrected across README, CLAUDE.md, RELEASE.md (AskUser → AskUserQuestion, MCP split, NotebookEdit/TaskUpdate added)
+- Hook event list updated (Stop, TeammateIdle, TaskCompleted)
+- `install.sh` — Stop hook added, matchers changed to `*`
+- `permission` state added to `state_room_map` in config.json
+- Project structure updated to include all backend/frontend files
+
+### Bug Fixes
+- `install.sh` missing Stop hook — alert clear on session end now works for manual installs
+- `permission` state had no room mapping — Leader now routes to Manager Room
+
+---
+
 # Pie Office v1.0.0
 
 **Release Date:** 2026-03-20
