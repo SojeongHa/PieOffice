@@ -14,7 +14,7 @@ cat << EOF
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Agent|SendMessage|TeamDelete|Read|Write|Edit|Bash|Grep|Glob|WebSearch|WebFetch",
+        "matcher": "*",
         "hooks": [
           { "type": "command", "command": "${HOOK_CMD}" }
         ]
@@ -22,7 +22,15 @@ cat << EOF
     ],
     "PostToolUse": [
       {
-        "matcher": "Agent|SendMessage|TeamDelete|Read|Write|Edit|Bash|Grep|Glob|WebSearch|WebFetch",
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "${HOOK_CMD}" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
         "hooks": [
           { "type": "command", "command": "${HOOK_CMD}" }
         ]

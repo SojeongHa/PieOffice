@@ -234,12 +234,6 @@ def clear_instance_alert(session_id: str) -> dict | None:
         return dict(instance)
 
 
-def count_pending_alerts() -> int:
-    """Return the number of instances with an active alert."""
-    with _lock:
-        return sum(1 for inst in _instances.values() if inst.get("alert_type") is not None)
-
-
 def clear_idle_alerts() -> list[dict]:
     """Clear all idle_prompt alerts (user has seen them).
 

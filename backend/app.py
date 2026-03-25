@@ -30,7 +30,6 @@ from state import (
     append_hook_log,
     clear_agents,
     clear_instance_alert,
-    count_pending_alerts,
     get_agent,
     get_agents,
     get_hook_log,
@@ -48,19 +47,12 @@ from state import (
     sweep_stale_subagents,
     track_instance,
 )
-from terminal import CaffeinateManager
-
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 from config import LEAVE_DELAY
 
 PORT = int(os.environ.get("PORT", 10317))
-
-# Caffeinate manager — keeps Mac awake while permission/idle alerts are pending
-_alert_caffeinate = CaffeinateManager(idle_timeout=60)
-_alert_caffeinate_active = False
-_alert_caffeinate_lock = threading.Lock()
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEBUG = os.environ.get("PIE_OFFICE_DEBUG", "").lower() in ("1", "true")
 
@@ -107,25 +99,6 @@ INSTANCE_SLOT_COUNT = len(_theme_config.get("instance_slots", []))
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
-def _sync_alert_caffeinate():
-    """Start/stop caffeinate based on pending alert count.
-
-    Thread-safe: guarded by _alert_caffeinate_lock to prevent double
-    acquire/release from concurrent Flask request threads.
-    """
-    global _alert_caffeinate_active
-    with _alert_caffeinate_lock:
-        pending = count_pending_alerts()
-        if pending > 0 and not _alert_caffeinate_active:
-            _alert_caffeinate.acquire()
-            _alert_caffeinate_active = True
-            print(f"[Alert] caffeinate ON — {pending} pending alert(s)", file=sys.stderr)
-        elif pending == 0 and _alert_caffeinate_active:
-            _alert_caffeinate.release()
-            _alert_caffeinate_active = False
-            print("[Alert] caffeinate OFF — no pending alerts", file=sys.stderr)
-
-
 app = Flask(__name__, static_folder=None)
 CORS(app, origins=[
     "http://localhost:10317", "http://localhost:10318",
@@ -189,8 +162,6 @@ def alerts():
     cleared = clear_idle_alerts()
     for inst in cleared:
         announcer.announce(inst, event="instance_alert_clear")
-    if cleared:
-        _sync_alert_caffeinate()
     return jsonify(result)
 
 
@@ -200,8 +171,6 @@ def alerts_ack():
     cleared = clear_idle_alerts()
     for inst in cleared:
         announcer.announce(inst, event="instance_alert_clear")
-    if cleared:
-        _sync_alert_caffeinate()
     return jsonify({"cleared": len(cleared)})
 
 
@@ -288,7 +257,6 @@ def hook():
             if cleared:
                 print(f"[Alert] CLEARED by event={event_type} session={session_id[:12]}", file=sys.stderr)
                 announcer.announce(cleared, event="instance_alert_clear")
-                _sync_alert_caffeinate()
         else:
             print(f"[Alert] SET event={event_type} session={session_id[:12]} type={payload.get('notification_type')}", file=sys.stderr)
 
@@ -347,7 +315,6 @@ def hook():
             inst = set_instance_alert(session_id_val, notification_type, message)
             if inst:
                 announcer.announce(inst, event="instance_alert")
-                _sync_alert_caffeinate()
 
     elif event_type == "team_delete":
         # All agents leave immediately
@@ -512,8 +479,6 @@ def _stale_sweep_loop():
             stale_instances = sweep_stale_instances()
             for sid in stale_instances:
                 announcer.announce({"session_id": sid}, event="instance_slot_release")
-            if stale_instances:
-                _sync_alert_caffeinate()
             # Sweep stale SSE connections to prevent file descriptor leaks
             announcer.sweep_stale_listeners()
         except Exception as e:

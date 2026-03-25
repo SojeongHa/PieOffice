@@ -1,3 +1,51 @@
+# Pie Office v1.0.1
+
+**Release Date:** 2026-03-24
+**8 commits** | Terminal UX, caffeinate simplification, per-user character config
+
+---
+
+## Changes
+
+### Terminal UX
+- **Tab quick action button** — send Tab key to terminal from phone
+- **Clear button fix** — now sends Ctrl+U (kill line) to terminal instead of clearing the IME input field
+- **Smaller action buttons** — font-size and padding reduced to prevent layout overflow on narrow screens
+
+### Caffeinate Simplification
+- **Removed alert-based caffeinate** from Flask backend (`_sync_alert_caffeinate`, `count_pending_alerts`)
+- **WebSocket-only caffeinate** — `CaffeinateManager` simplified to pure ref-counting: starts on first phone connection, stops when all disconnect. No more idle timer.
+- **`caffeinate.acquire()` moved after fork** in terminal_server.py for correctness
+
+### dev.sh Flags
+- **`--tailscale`** — enables Tailscale cross-network access (implies `--lan`), with status check and background warning loop until Tailscale connects
+- **`--no-sleep`** — keeps Mac awake via `caffeinate -s` while server runs (auto-killed on exit)
+- Tailscale watch loop now properly killed on server exit
+
+### Per-User Character Distribution
+- **Hook reads `config.local.json`** for `agent_type_map` and `agent_alias_map` — per-user character customization without modifying shared git files
+- **Base defaults** include official Claude agents only (superpowers, code-review, code-simplifier, everything-claude-code)
+- **`/distribute-character` skill** now updates only `config.local.json`, not the hook
+- Malformed `config.local.json` now logs parse errors to stderr instead of silent failure
+
+### Tailscale Onboarding
+- **App Store install recommended** over brew in onboard-remote skill
+- **Wake-on-LAN guide** added for WiFi-only mode
+- WiFi-only vs cross-network trade-offs documented
+
+### Documentation Sync
+- Tool routing tables corrected across README, CLAUDE.md, RELEASE.md (AskUser → AskUserQuestion, MCP split, NotebookEdit/TaskUpdate added)
+- Hook event list updated (Stop, TeammateIdle, TaskCompleted)
+- `install.sh` — Stop hook added, matchers changed to `*`
+- `permission` state added to `state_room_map` in config.json
+- Project structure updated to include all backend/frontend files
+
+### Bug Fixes
+- `install.sh` missing Stop hook — alert clear on session end now works for manual installs
+- `permission` state had no room mapping — Leader now routes to Manager Room
+
+---
+
 # Pie Office v1.0.0
 
 **Release Date:** 2026-03-20
@@ -19,7 +67,7 @@ Pie Office is a pixel-art virtual office that visualizes Claude Code agent activ
 - **Agent-to-character mapping** via `config.json` (`agent_map`) with per-user overrides in `config.local.json` (gitignored)
 - **Resident agents** spawn on page load; non-resident agents appear on hook events and auto-remove after 60s idle
 - **Unmapped agents** fall back to `robot` sprite with random pastel tint (Ditto style)
-- **Tool-event routing** to 4 character roles: Explorer (Read/Grep/Glob/Bash), Assistant (Write/Edit), Planner (Agent/Task), Leader (Skill/MCP/AskUser)
+- **Tool-event routing** to 4 character roles: Explorer (Read/Grep/Glob/Bash/WebSearch/WebFetch + search MCP), Assistant (Write/Edit/NotebookEdit), Planner (Agent/TaskCreate/TaskUpdate), Leader (Skill/AskUserQuestion + non-search MCP)
 - **SubagentStart** reuses resident agents when `agent_type` matches, preventing duplicate characters
 - **Object sprites** — static images and animated spritesheets for furniture and decorations
 
@@ -36,7 +84,7 @@ Pie Office is a pixel-art virtual office that visualizes Claude Code agent activ
   6. FD soft limit raised at startup + health endpoint monitoring (`sse_listeners`, `open_fds`, `fd_limit`)
 
 ### Claude Code Hook Integration
-- **`hook/pie-office-hook.py`** — captures PreToolUse, PostToolUse, SubagentStart, Stop, and notification events
+- **`hook/pie-office-hook.py`** — captures PreToolUse, PostToolUse, SubagentStart, SubagentStop, Stop, Notification, TeammateIdle, and TaskCompleted events
 - Forwards `session_id` and `cwd` on all events for instance alert routing
 - All hook errors logged to stderr (not gated by DEBUG flag)
 
@@ -45,9 +93,8 @@ Pie Office is a pixel-art virtual office that visualizes Claude Code agent activ
 - `permission_prompt` and `idle_prompt` notifications become `instance_alert` SSE events with animated sprites (exclamation/question mark)
 - Non-notification events from the same `session_id` auto-clear alerts
 - Hook `Stop` event sends Leader to idle, triggering alert clear
-- **Caffeinate integration** — separate `CaffeinateManager` keeps Mac awake during pending alerts
-  - `idle_prompt` cleared on "seen" (phone fetch via `/alerts` or laptop sleep-wake ack via `/alerts/ack`)
-  - `permission_prompt` cleared by Stop hook (covers permission denial)
+- `idle_prompt` cleared on "seen" (phone fetch via `/alerts` or laptop sleep-wake ack via `/alerts/ack`)
+- `permission_prompt` cleared by Stop hook (covers permission denial)
 
 ### Web Terminal (iPhone Remote Access)
 - **asyncio + websockets + pty** server on port 10316 (separate process, NOT Flask thread)
@@ -57,9 +104,9 @@ Pie Office is a pixel-art virtual office that visualizes Claude Code agent activ
 - **Touch-optimized UI:**
   - Text input bar with IME composition support
   - Scroll mode toggle with natural touch scrolling (5px per line)
-  - Arrow up/down quick buttons
+  - Arrow up/down quick buttons, Tab key, number keys (1/2/3), Enter, Clear
   - CSP-compliant event handlers (no inline `onclick`)
-- **Caffeinate** keeps Mac awake during active terminal sessions
+- **Caffeinate** keeps Mac awake during active phone terminal sessions (WebSocket-based, auto off on disconnect)
 - **Rate limiting** — IP-based sliding window (HTTP 30req/min, WS 10conn/min)
 - **`.mobileconfig` generator** for one-step iPhone certificate setup
 
@@ -83,7 +130,7 @@ Pie Office is a pixel-art virtual office that visualizes Claude Code agent activ
 - Language auto-detection with manual override
 
 ### Developer Experience
-- **`dev.sh`** — single entry point with port argument and `--lan` flag
+- **`dev.sh`** — single entry point: `[port]`, `--lan` (WiFi), `--tailscale` (cross-network), `--no-sleep` (caffeinate)
 - **Port convention:** 10317 (production), 10318 (Claude test)
 - **In-memory state only** — server restart = clean slate, no persistence layer to manage
 - **Tile editor** in `editor/` for tilemap authoring
@@ -117,8 +164,14 @@ iPhone (terminal.html) ←—WSS—→  Terminal server (terminal_server.py, por
 # Start on custom port
 ./dev.sh 10318
 
-# Start with LAN/phone access
-LAN_MODE=1 ./dev.sh
+# Start with WiFi phone access
+./dev.sh --lan
+
+# Start with Tailscale cross-network access
+./dev.sh --lan --tailscale
+
+# Keep Mac awake while server runs (for away-from-desk use)
+./dev.sh --lan --tailscale --no-sleep
 
 # Setup terminal for iPhone
 ./scripts/setup-terminal.sh

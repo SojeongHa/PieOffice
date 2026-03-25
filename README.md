@@ -144,7 +144,9 @@ Claude Code Hooks ──> Flask Backend ──> SSE Broadcast ──> Phaser 3 F
    PostToolUse,         state,           agent_update,      sprites,
    SubagentStart,       stale sweep,     agent_leave,       A* pathfinding,
    SubagentStop,        leave timers)    agent_chat)        speech bubbles)
-   Notification)
+   Stop,
+   Notification,
+   TaskCompleted)
 ```
 
 ### Agent routing
@@ -152,10 +154,12 @@ Claude Code Hooks ──> Flask Backend ──> SSE Broadcast ──> Phaser 3 F
 | Tool | Character | Room |
 |------|-----------|------|
 | Read, Grep, Glob, Bash | Explorer (Fox) | Manager / Server |
-| Write, Edit | Assistant (Squirrel) | Cafeteria |
-| Agent, TaskCreate | Planner (Bear) | Cafeteria |
-| Skill, MCP, AskUser | Leader (Penguin) | Varies |
+| Write, Edit, NotebookEdit | Assistant (Squirrel) | Cafeteria |
+| Agent, TaskCreate, TaskUpdate | Planner (Bear) | Cafeteria |
+| Skill, AskUserQuestion | Leader (Penguin) | Manager |
 | WebSearch, WebFetch | Explorer (Fox) | Manager |
+| MCP tools (search-oriented) | Explorer (Fox) | Manager |
+| MCP tools (non-search) | Leader (Penguin) | Server |
 
 ### Lifecycle
 
@@ -191,14 +195,15 @@ Append `?lang=ko` to the URL, or let it auto-detect from your browser.
 
 ```
 PieOffice/
-  backend/             # Flask server (app.py, state.py, sse.py)
+  backend/             # Flask server (app.py, state.py, sse.py, terminal.py, terminal_auth.py, terminal_server.py, rate_limiter.py)
   frontend/            # Phaser 3 game + UI modules
-    js/                # config, game, agents, sse, ui, pathfinding
+    js/                # config, game, agents, sse, ui, i18n, pathfinding, instance-alerts, terminal-client, dialogue
     i18n/              # 16 language files
   hook/                # Claude Code hook integration
   public/script/       # Character sprite generator (open source)
   theme/default/       # Tilemap, tileset, characters, objects, backgrounds
   tools/               # Collision editor
+  scripts/             # Setup scripts (setup-terminal.sh, generate-mobileconfig.sh, claude-tmux)
 ```
 
 ## Requirements

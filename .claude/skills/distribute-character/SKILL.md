@@ -41,9 +41,9 @@ Read these files using the **Read tool** (not Grep/Glob — `config.local.json` 
 
 ```
 theme/default/config.json   → agent_map (base defaults)
-config.local.json           → agent_map overrides (may not exist yet)
+config.local.json           → agent_map, agent_type_map, agent_alias_map overrides (may not exist yet)
 config.local.json.sample    → reference for available options
-hook/pie-office-hook.py     → AGENT_TYPE_MAP (subagent type routing)
+hook/pie-office-hook.py     → _DEFAULT_AGENT_TYPE_MAP (base defaults, DO NOT modify)
 ```
 
 Merge base + local to determine the current effective agent_map. Identify any custom overrides the user has already set.
@@ -132,25 +132,27 @@ Before → After:
 
 ### Step 5: Confirm & Apply
 
-Ask the user to confirm. On approval, update TWO files:
+Ask the user to confirm. On approval, update **only `config.local.json`** (gitignored, personal to each user):
 
-1. **`config.local.json`** → `agent_map` overrides (partial deep merge — only changed fields per agent key). This file is gitignored and personal to each user. The backend merges it on top of `theme/default/config.json` at runtime.
-2. **`hook/pie-office-hook.py`** → `AGENT_TYPE_MAP` dict (add new agent types so SubagentStart can resolve them)
+- **`agent_map`** — sprite/position overrides for new agent keys. Set `"resident": false` on base keys being replaced to hide them.
+- **`agent_type_map`** — agent type → display name mappings. Merged on top of hook's `_DEFAULT_AGENT_TYPE_MAP` at runtime.
+- **`agent_alias_map`** — agent type aliases (multiple types share one character). Merged on top of hook's `_DEFAULT_AGENT_ALIAS_MAP`.
 
-**Important**: Do NOT modify `theme/default/config.json`. All agent_map customizations go into `config.local.json`. The base theme config serves as the shared default.
+**Important**: Do NOT modify `hook/pie-office-hook.py` or `theme/default/config.json`. These are git-shared files. All customizations go into `config.local.json`. The hook reads `agent_type_map` and `agent_alias_map` from this file at startup and merges with its built-in defaults.
 
-When writing to `config.local.json`, only include the fields that differ from the theme default. For example, if only `displayName` and the agent key change but `sprite`, `resident`, and `idlePosition` stay the same, only write the changed fields:
+When redistributing a character to a NEW agent key (e.g., `coder_d` → `my-agent`), include all fields since the key has no base to merge from. Also set the OLD key to `"resident": false` to prevent duplicate sprites:
 
 ```json
 {
-  "character_theme": "pokemon",
+  "agent_type_map": {
+    "my-agent": "MyAgent"
+  },
   "agent_map": {
-    "review-critic": { "sprite": "coder_d", "displayName": "Critic", "resident": true, "idlePosition": { "x": 16, "y": 17 } }
+    "my-agent": { "sprite": "coder_d", "displayName": "MyAgent", "resident": true, "idlePosition": { "x": 16, "y": 17 } },
+    "review-critic": { "resident": false }
   }
 }
 ```
-
-Note: When redistributing a character to a NEW agent key (e.g., `coder_d` → `review-critic`), you must include all fields (`sprite`, `displayName`, `resident`, `idlePosition`) since the key itself is new and has no base to merge from.
 
 Show the exact changes before applying.
 
@@ -174,17 +176,14 @@ print(json.dumps(merged, indent=2))
 
 Confirm:
 - All agent IDs are unique
-- No character sprite is assigned twice
-- Every new agent_map key has a corresponding AGENT_TYPE_MAP entry
+- No resident character sprite is assigned twice (check `resident: true` entries only)
+- Every new agent type has a corresponding `agent_type_map` entry in `config.local.json`
 - `config.local.json` only contains overrides, not a full copy of the base config
+- Old base keys being replaced are set to `"resident": false`
 
-### Step 7: Commit
+### Step 7: Done
 
-Ask the user if they want to commit the hook changes. Only `hook/pie-office-hook.py` needs committing — `config.local.json` is gitignored and personal.
-
-```
-feat: add agent type mappings for redistributed characters
-```
+No commit needed — `config.local.json` is gitignored and personal. Just remind the user to restart the pie-office server.
 
 ## Onboarding: Unmapped Agent Types in config.json
 

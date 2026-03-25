@@ -37,6 +37,7 @@ Required hook events and matchers:
 |-------|---------|
 | PreToolUse | `*` |
 | PostToolUse | `*` |
+| Stop | `*` |
 | SubagentStart | `*` |
 | SubagentStop | `*` |
 | Notification | `*` |
@@ -60,6 +61,7 @@ Show the user a summary:
 Pie Office hooks installed:
   - PreToolUse ✓
   - PostToolUse ✓
+  - Stop ✓
   - SubagentStart ✓
   - SubagentStop ✓
   - Notification ✓

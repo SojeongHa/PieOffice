@@ -4,10 +4,7 @@ import os
 import subprocess
 import sys
 import threading
-import time
 from dataclasses import dataclass
-
-from config import TERMINAL_IDLE_TIMEOUT
 
 
 # ---------------------------------------------------------------------------
@@ -59,71 +56,49 @@ def list_tmux_sessions() -> list[TmuxSession]:
 
 
 # ---------------------------------------------------------------------------
-# Caffeinate manager — prevent Mac sleep during active terminal sessions
+# Caffeinate manager — prevent Mac sleep during active phone terminal sessions
 # ---------------------------------------------------------------------------
 
 
 class CaffeinateManager:
-    """Manages a single caffeinate process. Starts on first terminal open,
-    stops after TERMINAL_IDLE_TIMEOUT of no active sessions."""
+    """Ref-counted caffeinate process. Starts on first WebSocket open,
+    stops when all WebSocket sessions close."""
 
-    def __init__(self, idle_timeout: int = TERMINAL_IDLE_TIMEOUT):
+    def __init__(self) -> None:
         self._process: subprocess.Popen | None = None
-        self._active_count: int = 0
+        self._count: int = 0
         self._lock = threading.Lock()
-        self._idle_timeout = idle_timeout
-        self._idle_timer: threading.Timer | None = None
 
     def acquire(self) -> None:
         """Called when a terminal WebSocket session opens."""
         with self._lock:
-            self._cancel_idle_timer()
-            self._active_count += 1
+            self._count += 1
             if self._process is None:
                 self._start()
 
     def release(self) -> None:
         """Called when a terminal WebSocket session closes."""
         with self._lock:
-            self._active_count = max(0, self._active_count - 1)
-            if self._active_count == 0:
-                self._schedule_idle_stop()
+            self._count = max(0, self._count - 1)
+            if self._count == 0:
+                self._stop()
 
     def _start(self) -> None:
-        """Start caffeinate -s (prevent sleep while on power)."""
         try:
             self._process = subprocess.Popen(
                 ["caffeinate", "-s"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-            print("[Terminal] caffeinate started — Mac will stay awake", file=sys.stderr)
+            print("[Terminal] caffeinate ON — phone connected", file=sys.stderr)
         except FileNotFoundError:
-            print("[Terminal] caffeinate not found (not macOS?)", file=sys.stderr)
+            pass
 
-    def stop(self) -> None:
-        """Kill caffeinate process."""
+    def _stop(self) -> None:
         if self._process is not None:
             self._process.terminate()
             self._process = None
-            print("[Terminal] caffeinate stopped — Mac can sleep", file=sys.stderr)
-
-    def _schedule_idle_stop(self) -> None:
-        self._cancel_idle_timer()
-        self._idle_timer = threading.Timer(self._idle_timeout, self._idle_stop)
-        self._idle_timer.daemon = True
-        self._idle_timer.start()
-
-    def _idle_stop(self) -> None:
-        with self._lock:
-            if self._active_count == 0:
-                self.stop()
-
-    def _cancel_idle_timer(self) -> None:
-        if self._idle_timer is not None:
-            self._idle_timer.cancel()
-            self._idle_timer = None
+            print("[Terminal] caffeinate OFF — no phone sessions", file=sys.stderr)
 
 
-# Singleton
 caffeinate = CaffeinateManager()
