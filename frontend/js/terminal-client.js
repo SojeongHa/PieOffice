@@ -326,7 +326,7 @@
   document.getElementById("btn-1").addEventListener("touchend", function () { termSend("1"); });
   document.getElementById("btn-2").addEventListener("touchend", function () { termSend("2"); });
   document.getElementById("btn-3").addEventListener("touchend", function () { termSend("3"); });
-  document.getElementById("btn-clear").addEventListener("touchend", termClearInput);
+  document.getElementById("btn-clear").addEventListener("touchend", function () { termSend("\x15"); });
   document.getElementById("btn-enter").addEventListener("touchend", function () { termSend("\r"); });
 
   // Touch scroll when in scroll mode — send arrow keys to tmux
