@@ -19,7 +19,7 @@ Pie Office is a pixel-art virtual office that visualizes Claude Code agent activ
 - **Agent-to-character mapping** via `config.json` (`agent_map`) with per-user overrides in `config.local.json` (gitignored)
 - **Resident agents** spawn on page load; non-resident agents appear on hook events and auto-remove after 60s idle
 - **Unmapped agents** fall back to `robot` sprite with random pastel tint (Ditto style)
-- **Tool-event routing** to 4 character roles: Explorer (Read/Grep/Glob/Bash), Assistant (Write/Edit), Planner (Agent/Task), Leader (Skill/MCP/AskUser)
+- **Tool-event routing** to 4 character roles: Explorer (Read/Grep/Glob/Bash/WebSearch/WebFetch + search MCP), Assistant (Write/Edit/NotebookEdit), Planner (Agent/TaskCreate/TaskUpdate), Leader (Skill/AskUserQuestion + non-search MCP)
 - **SubagentStart** reuses resident agents when `agent_type` matches, preventing duplicate characters
 - **Object sprites** — static images and animated spritesheets for furniture and decorations
 
@@ -36,7 +36,7 @@ Pie Office is a pixel-art virtual office that visualizes Claude Code agent activ
   6. FD soft limit raised at startup + health endpoint monitoring (`sse_listeners`, `open_fds`, `fd_limit`)
 
 ### Claude Code Hook Integration
-- **`hook/pie-office-hook.py`** — captures PreToolUse, PostToolUse, SubagentStart, Stop, and notification events
+- **`hook/pie-office-hook.py`** — captures PreToolUse, PostToolUse, SubagentStart, SubagentStop, Stop, Notification, TeammateIdle, and TaskCompleted events
 - Forwards `session_id` and `cwd` on all events for instance alert routing
 - All hook errors logged to stderr (not gated by DEBUG flag)
 
@@ -56,7 +56,7 @@ Pie Office is a pixel-art virtual office that visualizes Claude Code agent activ
 - **Touch-optimized UI:**
   - Text input bar with IME composition support
   - Scroll mode toggle with natural touch scrolling (5px per line)
-  - Arrow up/down quick buttons
+  - Arrow up/down quick buttons, Tab key, number keys (1/2/3), Enter, Clear
   - CSP-compliant event handlers (no inline `onclick`)
 - **Caffeinate** keeps Mac awake during active phone terminal sessions (WebSocket-based, auto off on disconnect)
 - **Rate limiting** — IP-based sliding window (HTTP 30req/min, WS 10conn/min)
