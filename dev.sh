@@ -7,6 +7,7 @@
 PORT=10317
 LAN_MODE=""
 TAILSCALE_MODE=""
+TAILSCALE_WATCH_PID=""
 NO_SLEEP=""
 for arg in "$@"; do
     if [ "$arg" = "--lan" ]; then
@@ -39,6 +40,7 @@ if [ -n "$LAN_MODE" ]; then
                 sleep 30
             done
             echo "✓ Tailscale connected: https://$(tailscale ip -4 2>/dev/null):10316/") &
+            TAILSCALE_WATCH_PID=$!
         else
             echo "Tailscale: https://$(tailscale ip -4 2>/dev/null):10316/"
         fi
@@ -63,6 +65,9 @@ echo "Starting Pie Office on :$PORT ..."
 
 # Clean up caffeinate on exit
 cleanup() {
+    if [ -n "$TAILSCALE_WATCH_PID" ]; then
+        kill "$TAILSCALE_WATCH_PID" 2>/dev/null
+    fi
     if [ -n "$CAFFEINATE_PID" ]; then
         kill "$CAFFEINATE_PID" 2>/dev/null
         echo "No-sleep mode: caffeinate OFF"

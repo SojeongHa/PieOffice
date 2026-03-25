@@ -27,7 +27,10 @@ def _load_local_config():
     try:
         with open(path, "r") as f:
             return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError as e:
+        print(f"[pie-office-hook] config.local.json parse error: {e}", file=sys.stderr)
         return {}
 
 
