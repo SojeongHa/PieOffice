@@ -42,14 +42,14 @@ class TestParseTmuxList:
 
 class TestListTmuxSessions:
     @patch("terminal.subprocess.run")
-    def test_list_filters_claude_sessions(self, mock_run):
+    def test_list_filters_claude_and_agy_sessions(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout="claude-abc:1:0:/tmp\nother-session:1:0:/tmp\nclaude-def:1:0:/tmp",
+            stdout="claude-abc:1:0:/tmp\nother-session:1:0:/tmp\nagy-def:1:0:/tmp",
         )
         sessions = list_tmux_sessions()
         assert len(sessions) == 2
-        assert all(s.name.startswith("claude-") for s in sessions)
+        assert all(s.name.startswith(("claude-", "agy-")) for s in sessions)
 
     @patch("terminal.subprocess.run")
     def test_list_empty_when_no_tmux(self, mock_run):

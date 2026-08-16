@@ -41,7 +41,7 @@ def parse_tmux_list(raw: str) -> list[TmuxSession]:
 
 
 def list_tmux_sessions() -> list[TmuxSession]:
-    """List tmux sessions that were started by the claude wrapper."""
+    """List tmux sessions that were started by the claude or agy wrapper."""
     result = subprocess.run(
         [
             "tmux", "list-sessions", "-F",
@@ -52,7 +52,7 @@ def list_tmux_sessions() -> list[TmuxSession]:
     )
     if result.returncode != 0:
         return []
-    return [s for s in parse_tmux_list(result.stdout) if s.name.startswith("claude-")]
+    return [s for s in parse_tmux_list(result.stdout) if s.name.startswith(("claude-", "agy-"))]
 
 
 # ---------------------------------------------------------------------------

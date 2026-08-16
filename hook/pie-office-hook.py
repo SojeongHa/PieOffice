@@ -104,6 +104,83 @@ _PLANNER_TOOLS = {
 }
 
 
+def normalize_antigravity_event(event_data, explicit_event=None):
+    """Normalize Antigravity hook payload to the standard format."""
+    is_agy = "conversationId" in event_data or explicit_event or "toolCall" in event_data
+    if not is_agy:
+        return event_data, False
+
+    hook_event = explicit_event or event_data.get("hook_event_name", "PreToolUse")
+    session_id = event_data.get("conversationId", event_data.get("session_id", ""))
+    workspace_paths = event_data.get("workspacePaths", [])
+    cwd = workspace_paths[0] if workspace_paths else event_data.get("cwd", "")
+
+    tool_call = event_data.get("toolCall", {})
+    raw_tool_name = tool_call.get("name", "")
+    tool_args = tool_call.get("args", {})
+
+    # Tool mapping for Antigravity tools
+    tool_name = raw_tool_name
+    tool_input = tool_args
+
+    if raw_tool_name == "view_file":
+        tool_name = "Read"
+        tool_input = {"file_path": tool_args.get("AbsolutePath", "")}
+    elif raw_tool_name in ("replace_file_content", "write_to_file"):
+        tool_name = "Write" if raw_tool_name == "write_to_file" else "Edit"
+        tool_input = {"file_path": tool_args.get("TargetFile", "")}
+    elif raw_tool_name == "run_command":
+        tool_name = "Bash"
+        cmd = tool_args.get("CommandLine", "")
+        summary = tool_args.get("toolSummary", cmd)
+        tool_input = {"command": cmd, "description": summary}
+    elif raw_tool_name == "grep_search":
+        tool_name = "Grep"
+        tool_input = {"pattern": tool_args.get("Query", "")}
+    elif raw_tool_name == "list_dir":
+        tool_name = "Glob"
+        tool_input = {"pattern": tool_args.get("DirectoryPath", "")}
+    elif raw_tool_name == "search_web":
+        tool_name = "WebSearch"
+        tool_input = {"query": tool_args.get("query", "")}
+    elif raw_tool_name == "read_url_content":
+        tool_name = "WebFetch"
+        tool_input = {"url": tool_args.get("Url", "")}
+    elif raw_tool_name == "ask_question":
+        tool_name = "AskUserQuestion"
+        questions = tool_args.get("questions", [])
+        q = questions[0].get("question", "") if questions else ""
+        tool_input = {"question": q}
+    elif raw_tool_name == "send_message":
+        tool_name = "SendMessage"
+        tool_input = {
+            "recipient": tool_args.get("Recipient", ""),
+            "content": tool_args.get("Message", ""),
+        }
+    elif raw_tool_name == "invoke_subagent":
+        subagents = tool_args.get("Subagents", [])
+        sub = subagents[0] if subagents else {}
+        role = sub.get("Role", "subagent")
+        tool_name = "Agent"
+        tool_input = {
+            "subagent_type": role,
+            "name": role,
+            "description": sub.get("Prompt", "")[:80],
+        }
+    elif raw_tool_name == "generate_image":
+        tool_name = "Write"
+        tool_input = {"file_path": tool_args.get("ImageName", "image.png")}
+
+    normalized = {
+        "hook_event_name": hook_event,
+        "tool_name": tool_name,
+        "tool_input": tool_input,
+        "session_id": session_id,
+        "cwd": cwd,
+    }
+    return normalized, True
+
+
 def is_search_mcp_tool(tool_name: str) -> bool:
     """Return True if an mcp__* tool name looks search/read-oriented."""
     lowered = tool_name.lower()
@@ -454,10 +531,19 @@ def handle_event(event_data):
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Pie Office Hook")
+    parser.add_argument("--event", type=str, default="", help="Explicit hook event name (e.g., PreToolUse, PostToolUse, Stop)")
+    args, _ = parser.parse_known_args()
+
+    is_antigravity = False
+    hook_event = args.event
     try:
         raw = sys.stdin.read()
         if raw.strip():
             event_data = json.loads(raw)
+            event_data, is_antigravity = normalize_antigravity_event(event_data, explicit_event=args.event)
+            hook_event = event_data.get("hook_event_name", args.event)
             handle_event(event_data)
     except json.JSONDecodeError as e:
         print(f"[pie-office-hook] JSON parse error: {e}", file=sys.stderr)
@@ -465,3 +551,10 @@ if __name__ == "__main__":
         print(f"[pie-office-hook] Missing key: {e}", file=sys.stderr)
     except Exception as e:
         print(f"[pie-office-hook] Unexpected error: {e}", file=sys.stderr)
+    finally:
+        # If running as an Antigravity hook, return required JSON on stdout
+        if is_antigravity or args.event:
+            if hook_event == "PreToolUse":
+                print(json.dumps({"decision": "allow"}))
+            else:
+                print(json.dumps({}))
