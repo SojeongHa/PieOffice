@@ -1,0 +1,23 @@
+#!/bin/bash
+# agy-tmux — tmux wrapper for Antigravity CLI (agy)
+# Ensures each agy session runs inside tmux for web terminal sharing and persistence.
+
+# Generate a short session name from the working directory
+DIR_HASH=$(echo -n "$(pwd)" | md5 -q | head -c 8)
+BASE_NAME="agy-${DIR_HASH}"
+
+# If already inside tmux, just run agy directly
+if [ -n "$TMUX" ]; then
+    exec command agy "$@"
+fi
+
+# Find a free session name: agy-HASH, agy-HASH-2, agy-HASH-3, ...
+SESSION_NAME="$BASE_NAME"
+COUNTER=1
+while tmux has-session -t "$SESSION_NAME" 2>/dev/null; do
+    COUNTER=$((COUNTER + 1))
+    SESSION_NAME="${BASE_NAME}-${COUNTER}"
+done
+
+# Create new tmux session running agy
+exec tmux new-session -s "$SESSION_NAME" -- command agy "$@"

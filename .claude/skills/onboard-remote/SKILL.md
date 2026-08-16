@@ -112,33 +112,30 @@ ipconfig getifaddr en0
 
 If the user declines WoL, skip — it's optional.
 
-### Step 3: Ask Claude Wrapper Preference
+### Step 3: Ask CLI Wrapper Preference (Claude / Antigravity)
 
-Ask the user which approach they prefer:
+Ask the user which CLI and wrapping approach they prefer (or both):
 
-1. **`claude-tmux` as a separate command** — existing `claude` stays untouched, use `claude-tmux` when you want tmux wrapping (default)
-2. **Replace `claude` with alias** — `claude` itself runs inside tmux via alias in `~/.zshrc`
+1. **`claude-tmux` / `agy-tmux` as separate commands** — existing `claude`/`agy` commands stay untouched (default)
+2. **Replace `claude` / `agy` with aliases** — runs inside tmux automatically via alias in `~/.zshrc` (`alias claude='claude-tmux'`, `alias agy='agy-tmux'`)
 
 Wait for the user's choice before proceeding.
 
-**Option 1 (claude-tmux, default):**
-- Install `scripts/claude-tmux` to `~/.local/bin/claude-tmux`
+**Option 1 (separate commands, default):**
+- Install `scripts/claude-tmux` and/or `scripts/agy-tmux` to `~/.local/bin/`
 - Ensure `~/.local/bin` is in PATH (add to `~/.zshrc` if needed)
 
-**Option 2 (claude alias):**
-- Install `scripts/claude-tmux` to `~/.local/bin/claude-tmux`
+**Option 2 (aliases):**
+- Install `scripts/claude-tmux` and/or `scripts/agy-tmux` to `~/.local/bin/`
 - Ensure `~/.local/bin` is in PATH
-- Append alias to `~/.zshrc`: `alias claude='claude-tmux'`
-- Warn the user that the original `claude` command is now shadowed by the tmux wrapper. To revert, remove the alias line from `~/.zshrc`.
+- Append alias to `~/.zshrc`: `alias claude='claude-tmux'` and/or `alias agy='agy-tmux'`
+- Warn the user that original commands are now shadowed by the tmux wrappers.
 
 After installing, verify:
 
 ```bash
-# For option 1:
-which claude-tmux && echo "OK"
-
-# For option 2:
-grep 'alias claude=' ~/.zshrc && echo "OK"
+which claude-tmux 2>/dev/null && echo "claude-tmux OK"
+which agy-tmux 2>/dev/null && echo "agy-tmux OK"
 ```
 
 ### Step 4: Generate mTLS Certificates

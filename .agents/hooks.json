@@ -1,0 +1,32 @@
+{
+  "pie-office": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/temple/Documents/workspace/PieOffice/hook/pie-office-hook.py --event PreToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/temple/Documents/workspace/PieOffice/hook/pie-office-hook.py --event PostToolUse"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python3 /Users/temple/Documents/workspace/PieOffice/hook/pie-office-hook.py --event Stop"
+      }
+    ]
+  }
+}

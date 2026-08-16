@@ -52,26 +52,32 @@ Merge base + local to determine the current effective agent_map. Identify any cu
 
 Collect available agent types from these sources **in priority order**:
 
-**Priority 1 (MANDATORY) — Agent tool description in current session:**
-This is the definitive source. Extract ALL `subagent_type` values from the Agent tool's description in the system prompt. Parse the full list — do NOT rely on memory or common examples.
+**Priority 1 (MANDATORY) — Agent / Subagent tool description in current session:**
+This is the definitive source. Extract ALL `subagent_type` / `TypeName` / subagent roles from the Agent or `invoke_subagent` tool descriptions in the system prompt. Parse the full list — do NOT rely on memory or common examples.
 
 **Priority 2 — Skill definitions that spawn agents:**
 ```
 ~/.claude/skills/*/SKILL.md
 .claude/skills/*/SKILL.md
+~/.gemini/config/skills/*/SKILL.md
+.agents/skills/*/SKILL.md
 ```
-Search for `subagent_type`, `Agent tool`, or agent-spawning patterns.
+Search for `subagent_type`, `Agent tool`, `invoke_subagent`, or agent-spawning patterns.
 
-**Priority 3 — Project CLAUDE.md files:**
+**Priority 3 — Project rule files (CLAUDE.md / GEMINI.md / AGENTS.md):**
 ```
 ~/Documents/workspace/*/CLAUDE.md
+~/Documents/workspace/*/GEMINI.md
+~/Documents/workspace/*/AGENTS.md
 ~/.claude/rules/**/*.md
+.agents/rules/**/*.md
 ```
 Scan for subagent type references and agent descriptions.
 
 **Priority 4 — Custom agents:**
 ```
 ~/.claude/agents/
+~/.gemini/config/agents/
 ```
 Check for user-defined agent configurations.
 
@@ -90,11 +96,11 @@ Create a usage ranking of non-fixed agent types with **concrete scoring**:
 
 | Metric | How to Measure | Weight |
 |--------|---------------|--------|
-| Registered in Agent tool | Listed as `subagent_type` in current session | +3 |
+| Registered in Agent / subagent tool | Listed as subagent type/role in current session | +3 |
 | Referenced in skills | Mentioned in any SKILL.md | +2 per skill |
-| Referenced in CLAUDE.md | Mentioned in any project CLAUDE.md | +1 per project |
+| Referenced in project rules | Mentioned in CLAUDE.md / GEMINI.md / AGENTS.md | +1 per project |
 | Has subtypes | Colon-namespaced variants exist | +1 per subtype |
-| Custom agent defined | Exists in `~/.claude/agents/` | +1 |
+| Custom agent defined | Exists in agents config directories | +1 |
 
 **Exclude** types that are already assigned to fixed characters (`general-purpose`, `Explore`, `Plan`).
 
