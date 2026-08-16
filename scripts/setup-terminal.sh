@@ -159,13 +159,19 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Tmux wrapper
+# 4. Tmux wrappers (Claude & Antigravity)
 # ---------------------------------------------------------------------------
-echo "[4/4] Claude tmux wrapper..."
+echo "[4/4] CLI tmux wrappers (Claude & Antigravity)..."
 mkdir -p "$WRAPPER_DIR"
 cp "$DIR/claude-tmux" "$WRAPPER_DIR/claude-tmux"
 chmod +x "$WRAPPER_DIR/claude-tmux"
 echo "  Installed: $WRAPPER_DIR/claude-tmux"
+
+if [ -f "$DIR/agy-tmux" ]; then
+    cp "$DIR/agy-tmux" "$WRAPPER_DIR/agy-tmux"
+    chmod +x "$WRAPPER_DIR/agy-tmux"
+    echo "  Installed: $WRAPPER_DIR/agy-tmux"
+fi
 
 if [[ ":$PATH:" != *":$WRAPPER_DIR:"* ]]; then
     echo ""
@@ -180,8 +186,9 @@ echo "Usage:"
 echo "  1. Start Pie Office in LAN mode:"
 echo "     ./dev.sh --lan"
 echo ""
-echo "  2. Start Claude via tmux wrapper:"
-echo "     claude-tmux"
+echo "  2. Start Claude or Antigravity via tmux wrapper:"
+echo "     claude-tmux   # Claude Code"
+echo "     agy-tmux      # Antigravity CLI"
 echo ""
 echo "  3. On your iPhone (with client cert installed), open:"
 if [ -n "$TAILSCALE_IP" ]; then
